@@ -1147,6 +1147,82 @@ function viewLayers() {
 }
 
 /* ---------- Ansicht: Layouts ---------- */
+/* ---------- Zustände und Familien ---------- */
+const STATES = [
+  { id: 'normal', name: 'Normal' },
+  { id: 'hover', name: 'Hover' },
+  { id: 'loading', name: 'Lädt' },
+  { id: 'empty', name: 'Leer' },
+  { id: 'error', name: 'Fehler' },
+];
+const FAMILY_NAME = { karte: 'Karte', listenzeile: 'Listenzeile', teaser: 'Teaser' };
+function statesResults(c) {
+  return STATES.filter(x => x.id !== 'normal' && (c.states || []).includes(x.id)).map(st => {
+    const bps = c.layouts.map(l => withRender({ state: st.id }, () => measureTemp(c, l)));
+    return { ...st, bad: bps.filter(b => !b.ok).length, bps };
+  });
+}
+function familyPrompt(c, want) {
+  const fam = want.filter(x => FAMILY_NAME[x]), st = want.filter(x => STATES.some(s => s.id === x));
+  return `Komponentenfamilie und Zustände für „${c.name}“ (components/${c.id}.js), dieselbe visuelle Logik wie die bestehenden Layouts:
+${fam.length ? `- Familie: ergänze Layouts mit ${fam.map(f => `family: "${f}"`).join(' und ')}. ${fam.includes('listenzeile') ? 'Listenzeile = eine Zeile in einer Liste, volle Kartenbreite, flach (etwa 72–96 px hoch), dieselben Inhalte knapp. ' : ''}${fam.includes('teaser') ? 'Teaser = redaktioneller Anreißer: Bild, Überschrift, Unterzeile. ' : ''}Bestehende Layouts bekommen family: "karte".
+` : ''}${st.length ? `- Zustände: setze states: [${st.map(x => `"${x}"`).join(', ')}] an der Komponente. render(d, h) fragt h.state ab: ${st.includes('loading') ? '"loading" = Skelett in den echten Flächen, gleiche Maße; ' : ''}${st.includes('empty') ? '"empty" = freundlicher Leerzustand mit einer Handlung; ' : ''}${st.includes('error') ? '"error" = kurze Fehlermeldung mit „Erneut versuchen“; ' : ''}${st.includes('hover') ? '"hover" = Bedienbares hervorheben, Stil über die Klasse .is-hover an der Karte (zusätzlich zu :hover); ' : ''}jeder Zustand passt in dieselbe Höhe und erfüllt die Regeln.
+` : ''}Prüfe mit node tools/check.mjs ${c.id} --states --system ${SYS_ID}.`;
+}
+function bindStates(sec, c) {
+  const bar = sec.querySelector('.cf-statebar'), grid = sec.querySelector('.cf-lay-grid');
+  sec.querySelector('[data-act="states"]')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!bar.hidden) { bar.hidden = true; btn.classList.remove('on'); grid.innerHTML = layGridHTML(c); bindLayItems(sec); return; }
+    bar.hidden = false;
+    btn.classList.add('on');
+    const res = statesResults(c);
+    const has = (c.states || []).length;
+    const fams = [...new Set(c.layouts.map(l => l.family).filter(Boolean))];
+    bar.innerHTML = `${has ? `<div class="cf-varrow"><span class="ed-lab">Zustand</span><div class="ed-seg">${STATES.filter(x => x.id === 'normal' || c.states.includes(x.id)).map(x => { const r = res.find(y => y.id === x.id); return `<button type="button" data-state="${x.id}"${x.id === 'normal' ? ' class="on"' : ''}>${esc(x.name)}${r ? `<em class="${r.bad ? 'is-bad' : 'is-ok'}">${r.bad || '✓'}</em>` : ''}</button>`; }).join('')}</div></div>` : '<p class="cf-stress-sum">Diese Komponente hat noch keine Zustände (Hover, Lädt, Leer, Fehler).</p>'}
+      <div class="cf-varrow"><span class="ed-lab">Familie</span><span class="cf-varhint">${fams.length ? fams.map(f => FAMILY_NAME[f] || f).join(' · ') : 'nur Karten'}</span></div>
+      <div class="cf-varrow"><span class="ed-lab">Ergänzen</span><div class="cf-checks">${[['listenzeile', 'Listenzeile'], ['teaser', 'Teaser'], ['hover', 'Hover'], ['loading', 'Lädt'], ['empty', 'Leer'], ['error', 'Fehler']]
+        .filter(([k]) => !fams.includes(k) && !(c.states || []).includes(k)).map(([k, n]) => `<label><input type="checkbox" value="${k}" checked> ${n}</label>`).join('') || '<span class="cf-varhint">alles da</span>'}</div>
+        <button type="button" class="cf-btn is-primary" data-a="fam-go">${F.live ? 'Von Claude ergänzen lassen' : 'Anweisung für Claude'}</button></div>
+      <div class="b-log ed-log cf-famlog"></div>`;
+    bar.querySelectorAll('[data-state]').forEach(b => b.addEventListener('click', () => {
+      bar.querySelectorAll('[data-state]').forEach(x => x.classList.toggle('on', x === b));
+      grid.innerHTML = layGridHTML(c, { state: b.dataset.state });
+      bindLayItems(sec);
+    }));
+    bar.querySelector('[data-a="fam-go"]').addEventListener('click', () => {
+      const want = [...bar.querySelectorAll('.cf-checks input:checked')].map(x => x.value);
+      if (!want.length) return;
+      const prompt = familyPrompt(c, want), log = bar.querySelector('.cf-famlog');
+      if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
+      bar.querySelectorAll('button, input').forEach(x => { x.disabled = true; });
+      generate(prompt, { log, view: 'layouts' });
+    });
+  });
+}
+
+/* ---------- Breakpoints: dieselben Regeln in mehreren Breiten ---------- */
+let layWidth = null;
+const widthsOf = () => S.widths || [320, S.width, 432];
+function widthResults(w) {
+  return F.components.flatMap(c => c.layouts.map(l => ({ c, l, bp: withRender({ width: w }, () => measureTemp(c, l)) })));
+}
+function widthToolsHTML() {
+  return `<div class="cf-laytools"><span class="ed-lab">Breite</span>${seg('lw', layWidth || '', [['', 'wie gebaut'], ...widthsOf().map(w => [w, `${w} px`])])}<span class="cf-wsum" id="cf-wsum"></span><div class="b-log ed-log cf-wlog"></div></div>`;
+}
+function bindWidthTools() {
+  main.querySelectorAll('[data-seg="lw"]').forEach(b => b.addEventListener('click', () => { layWidth = b.dataset.v ? +b.dataset.v : null; const y = scrollY; viewLayouts(); scrollTo(0, y); }));
+  const sum = document.getElementById('cf-wsum');
+  if (!layWidth || !sum) return;
+  const res = widthResults(layWidth), bad = res.filter(x => !x.bp.ok);
+  sum.innerHTML = bad.length ? `bei ${layWidth} px brechen <b>${bad.length} von ${res.length}</b> Layouts${F.live ? ` <button type="button" class="cf-btn" data-a="w-fix">Von Claude anpassen lassen</button>` : ''}` : `bei ${layWidth} px halten alle ${res.length} Layouts`;
+  sum.querySelector('[data-a="w-fix"]')?.addEventListener('click', e => {
+    e.currentTarget.disabled = true;
+    const lines = bad.map(x => `- ${x.c.id} / ${x.l.id}: ${x.bp.violations.slice(0, 3).map(v => v.msg).join('; ')}`).join('\n');
+    generate(`Breakpoints: Diese Layouts brechen bei ${layWidth} px Kartenbreite (sonst ${S.width} px). Mach sie in allen Breiten ${widthsOf().join(', ')} px regelkonform, ohne sie bei ${S.width} px zu verändern. h.width liefert die aktuelle Breite; height darf eine Funktion der Breite sein (height: w => …). Gleiche Regeln des aktiven Regelwerks.\n${lines}\nPrüfe mit node tools/check.mjs --widths --system ${SYS_ID}.`, { log: main.querySelector('.cf-wlog'), view: 'layouts' });
+  });
+}
+
 /* ---------- Varianten gezielt erzeugen ---------- */
 const DIRECTIONS = [
   { id: 'kompakter', name: 'Kompakter', desc: 'weniger Höhe, dichtere Abstände, nur das Nötigste bleibt sichtbar' },
@@ -1233,7 +1309,7 @@ function layGridHTML(c, opts = {}) {
     const sb = special ? run(l, () => measureTemp(c, l)) : null;
     const card = special ? run(l, () => cardHTML(c, l)) : cardHTML(c, l);
     return `<figure class="cf-lay-item" data-c="${esc(c.id)}" data-li="${i}">
-    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${l.variantOf ? `<em class="cf-varchip" title="Variante von ${esc(l.variantOf)}">${esc(dirName(l.direction))}</em>` : ''}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
+    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${l.variantOf ? `<em class="cf-varchip" title="Variante von ${esc(l.variantOf)}">${esc(dirName(l.direction))}</em>` : ''}${l.family && l.family !== 'karte' ? `<em class="cf-famchip">${esc(FAMILY_NAME[l.family] || l.family)}</em>` : ''}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
     ${l.variantOf && !sb && !state.solo ? variantDecisionHTML(c, l) : ''}
     <div class="cf-lay-card">${card}</div>
     ${sb && sb.violations.length ? `<ul class="cf-sviol">${sb.violations.map(v => `<li><code>${esc(v.rule)}</code>${esc(v.msg)}</li>`).join('')}</ul>` : l.idea && !sb ? `<p>${esc(l.idea)}</p>` : ''}
@@ -1299,7 +1375,7 @@ function bindStress(sec, c) {
       <div class="ed-seg">${STRESS.map(sc => { const r = res.find(x => x.id === sc.id); return `<button type="button" data-scen="${sc.id}"${sc.id === 'normal' ? ' class="on"' : ''}>${esc(sc.name)}${r ? `<em class="${r.bad ? 'is-bad' : 'is-ok'}">${r.bad ? r.bad : '✓'}</em>` : ''}</button>`; }).join('')}</div>`;
     bar.querySelectorAll('[data-scen]').forEach(b => b.addEventListener('click', () => {
       bar.querySelectorAll('[data-scen]').forEach(x => x.classList.toggle('on', x === b));
-      grid.innerHTML = layGridHTML(c, STRESS.find(x => x.id === b.dataset.scen));
+      grid.innerHTML = layGridHTML(c, { scen: STRESS.find(x => x.id === b.dataset.scen) });
       bindLayItems(sec);
     }));
   });
@@ -1310,19 +1386,21 @@ function bindLayItems(scope) {
 
 function viewLayouts() {
   const list = state.solo && state.c ? F.components.filter(c => c.id === state.c) : F.components;
-  main.innerHTML = `<div class="v-layouts">${errorsHTML()}${list.length ? list.map(c => {
+  main.innerHTML = `<div class="v-layouts">${errorsHTML()}${state.solo ? '' : widthToolsHTML()}${list.length ? list.map(c => {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
-  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button>`}</header>
+  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button><button type="button" class="cf-edit cf-var-btn" data-act="states">${icon('grid', 14)}Familie & Zustände</button>`}</header>
   <ul class="cf-viol">${findingsItems(bps, true)}</ul>
   <div class="cf-stressbar" hidden></div>
   <div class="cf-varbar" hidden></div>
+  <div class="cf-varbar cf-statebar" hidden></div>
   <div class="cf-lay-grid">${layGridHTML(c)}</div>
 </section>`;
   }).join('') : emptyHTML()}</div>`;
   main.querySelectorAll('.cf-lay [data-act="viol"]').forEach(b => b.addEventListener('click', () => b.closest('.cf-lay').classList.toggle('show-viol')));
   bindLayItems(main);
-  main.querySelectorAll('.cf-lay').forEach(sec => { bindStress(sec, F.byId[sec.id.slice(4)]); bindVariant(sec, F.byId[sec.id.slice(4)]); });
+  main.querySelectorAll('.cf-lay').forEach(sec => { const c = F.byId[sec.id.slice(4)]; bindStress(sec, c); bindVariant(sec, c); bindStates(sec, c); });
+  bindWidthTools();
   if (state.solo) main.querySelectorAll('.cf-lay').forEach(r => r.classList.add('show-viol'));
   else if (state.c) requestAnimationFrame(() => document.getElementById(`lay-${state.c}`)?.scrollIntoView({ block: 'start' }));
   const ro = takeReopen();
@@ -2854,6 +2932,8 @@ function writeReport() {
       }),
     })),
   };
+  if (Q.has('states')) report.states = F.components.flatMap(c => statesResults(c).flatMap(r => r.bps.filter(b => !b.ok).map(b => ({ c: c.id, name: c.name, l: b.l, lname: b.lname, scenario: `Zustand ${r.name}`, violations: b.violations }))));
+  if (Q.has('widths')) report.widths = widthsOf().filter(w => w !== S.width).flatMap(w => widthResults(w).filter(x => !x.bp.ok).map(x => ({ c: x.c.id, name: x.c.name, l: x.l.id, lname: x.l.name, scenario: `${w} px breit`, violations: x.bp.violations })));
   if (Q.has('stress')) {
     report.stress = F.components.flatMap(c => stressResults(c).flatMap(r => r.bps.filter(b => !b.ok).map(b => ({ c: c.id, name: c.name, l: b.l, lname: b.lname, scenario: r.name, violations: b.violations }))));
   }

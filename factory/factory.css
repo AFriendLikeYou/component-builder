@@ -598,7 +598,7 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 .cf-varbar { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding: 16px; border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
 .cf-varrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .cf-varrow .ed-lab { width: 112px; }
-.cf-varrow input { flex: 1; min-width: 220px; max-width: 480px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: #f4f4f2; font: 12px/1 var(--ui); color: var(--ink); }
+.cf-varrow > input { flex: 1; min-width: 220px; max-width: 480px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: #f4f4f2; font: 12px/1 var(--ui); color: var(--ink); }
 .cf-varrow .ed-seg { flex-wrap: wrap; }
 .cf-varhint { font-size: 12px; color: var(--ink-3); }
 .cf-varchip { margin-left: 4px; padding: 0 8px; border-radius: 999px; background: #eef3fd; color: #2556b8; font: 500 11px/20px var(--ui); font-style: normal; white-space: nowrap; }
@@ -610,3 +610,18 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 .rs-pref .is-ok, .rs-prefnotes .is-ok { color: var(--ok); }
 .rs-pref .is-bad, .rs-prefnotes .is-bad { color: var(--bad); }
 .rs-prefnotes { list-style: none; margin: 12px 0 0; padding: 0; font-size: 12px; line-height: 20px; color: var(--ink-2); }
+
+/* Familie, Zustände, Breiten */
+.cf-famchip { margin-left: 4px; padding: 0 8px; border-radius: 999px; background: rgba(225, 140, 210, .16); color: #a3478f; font: 500 11px/20px var(--ui); font-style: normal; white-space: nowrap; }
+.cf-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.cf-checks label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.cf-checks input { margin: 0; accent-color: var(--ink); }
+.cf-laytools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 32px; padding: 12px 16px; border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
+.cf-laytools .ed-lab { width: auto; }
+.cf-wsum { font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cf-wsum b { color: var(--bad); font-weight: 500; }
+.cf-laytools .cf-wlog { flex-basis: 100%; }
+.cf-laytools .cf-wlog:empty { display: none; }
+
+.cf-checks input { flex: none; width: auto; min-width: 0; height: auto; padding: 0; background: none; }
+.cf-row-head > .cf-edit { margin-left: 0; }

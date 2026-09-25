@@ -14,6 +14,7 @@ window.SYSTEM = {
   innerRadii: [0, 2, 4, 8, 'pill'], // erlaubte Radien für Flächen und Medien; 'pill' = Pille oder Kreis
   spacing: [4, 6, 8, 10, 12, 14, 16, 20, 24, 32, 56], // Abstände (gap, Innenabstand)
   minTarget: 32,     // Mindestgröße für Bedienelemente in px
+  widths: [320, 352, 432], // Breakpoints: Kartenbreiten, in denen die Layouts geprüft werden
 
   families: {       // erlaubte Familien und wofür sie da sind
     'Tablet Gothic': 'Oberfläche, Fließtext, UI-Überschriften',

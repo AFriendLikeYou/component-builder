@@ -13,6 +13,7 @@ window.SYSTEM = {
   innerRadii: [0, 8, 16, 'pill'], // erlaubte Radien für Flächen und Medien; 'pill' = Pille oder Kreis
   spacing: [8, 16, 24, 32, 40, 48], // Abstände (gap, Innenabstand)
   minTarget: 32,     // Mindestgröße für Bedienelemente in px
+  widths: [320, 352, 432], // Breakpoints: Kartenbreiten, in denen die Layouts geprüft werden
 
   families: {       // erlaubte Familien und wofür sie da sind
     'Inter': 'Oberfläche',

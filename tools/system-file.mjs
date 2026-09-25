@@ -8,7 +8,7 @@ const key = k => (/^[a-z_$][\w$]*$/i.test(k) ? k : q(k));
 const inline = o => `{ ${Object.entries(o).map(([k, v]) => `${key(k)}: ${val(v)}`).join(', ')} }`;
 
 const KNOWN = ['name', 'id', 'version', 'unit', 'gridView', 'inset', 'radius', 'width', 'innerRadii', 'spacing', 'minTarget', 'families', 'headline',
-  'typeScale', 'lineHeightStep', 'lineHeightRatios', 'limits', 'areaRoles', 'tokenPrefixes', 'accentFamilies', 'textStyles', 'rules'];
+  'typeScale', 'lineHeightStep', 'widths', 'lineHeightRatios', 'limits', 'areaRoles', 'tokenPrefixes', 'accentFamilies', 'textStyles', 'rules'];
 
 export function validSystem(S) {
   const num = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 512;
@@ -47,7 +47,7 @@ ${line(S.gridView != null, `  gridView: ${S.gridView},      // Abstand der Linie
   innerRadii: ${val(S.innerRadii)}, // erlaubte Radien für Flächen und Medien; 'pill' = Pille oder Kreis
   spacing: ${val(S.spacing)}, // Abstände (gap, Innenabstand)
   minTarget: ${S.minTarget ?? 32},     // Mindestgröße für Bedienelemente in px
-
+${line(S.widths, `  widths: ${val(S.widths)}, // Breakpoints: Kartenbreiten, in denen die Layouts geprüft werden`)}
   families: {       // erlaubte Familien und wofür sie da sind
 ${Object.entries(S.families).map(([k, v]) => `    ${q(k)}: ${q(v)},`).join('\n')}
   },

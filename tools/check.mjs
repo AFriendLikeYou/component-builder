@@ -5,6 +5,8 @@
 //   node tools/check.mjs music inbox  nur diese
 //   node tools/check.mjs --json       Rohbericht
 //   node tools/check.mjs --stress     zusätzlich Stresstest (lange Wörter, leer, ein Eintrag, zwölf Einträge)
+//   node tools/check.mjs --states     zusätzlich alle Zustände (Hover, Lädt, Leer, Fehler), sofern die Komponente sie hat
+//   node tools/check.mjs --widths     zusätzlich alle Breakpoint-Breiten aus dem Regelwerk
 // Exit-Code 1, wenn es Verstöße gibt.
 import { withPage, pageURL } from './_chrome.mjs';
 
@@ -13,11 +15,11 @@ const sysArg = args.find(a => a.startsWith('--system'));
 const sysId = sysArg ? (sysArg.includes('=') ? sysArg.split('=')[1] : args[args.indexOf(sysArg) + 1]) : 'fabrik';
 const only = args.filter((a, i) => !a.startsWith('-') && !(sysArg && !sysArg.includes('=') && args[i - 1] === sysArg));
 const asJSON = args.includes('--json');
-const stress = args.includes('--stress');
+const stress = args.includes('--stress'), states = args.includes('--states'), widths = args.includes('--widths');
 
 let report, pageErrors = [];
 try {
-  report = await withPage(pageURL(`check&system=${encodeURIComponent(sysId)}${stress ? '&stress' : ''}`), async page => {
+  report = await withPage(pageURL(`check&system=${encodeURIComponent(sysId)}${stress ? '&stress' : ''}${states ? '&states' : ''}${widths ? '&widths' : ''}`), async page => {
     const done = await page.waitFor("document.documentElement.dataset.done === '1'", 30000);
     pageErrors = page.errors;
     return done ? JSON.parse(await page.eval("document.getElementById('cf-report').textContent")) : null;
@@ -62,9 +64,10 @@ for (const c of comps) {
     for (const v of l.accepted || []) console.log(dim(`      ausnahme  ${v.msg}${v.reason ? ` – ${v.reason}` : ''}`));
   }
 }
-if (stress) {
-  const st = (report.stress || []).filter(x => !only.length || only.includes(x.c));
-  console.log(`\n${st.length ? red(`Stresstest: ${st.length} Fälle brechen`) : green('Stresstest: alle Fälle halten')}`);
+for (const [flag, key, label] of [[stress, 'stress', 'Stresstest'], [states, 'states', 'Zustände'], [widths, 'widths', 'Breakpoints']]) {
+  if (!flag) continue;
+  const st = (report[key] || []).filter(x => !only.length || only.includes(x.c));
+  console.log(`\n${st.length ? red(`${label}: ${st.length} Fälle brechen`) : green(`${label}: alle Fälle halten`)}`);
   for (const x of st) {
     console.log(`  ${red('✕')} ${x.name} / ${x.lname} ${dim(`· ${x.scenario}`)}`);
     for (const v of x.violations.slice(0, 3)) console.log(`      ${red(v.rule.padEnd(9))} ${v.msg}`);
