@@ -12,4 +12,5 @@ Factory.load([
   'compass',
   'reading',
   'video',
+  'flight',
 ]);
