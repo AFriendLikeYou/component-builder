@@ -84,7 +84,7 @@ const server = http.createServer((req, res) => {
     return res.end(buf);
   }
   if (url.pathname === '/api/history') {
-    try { history.commitNow(); } catch {}
+    try { if (!fs.existsSync(path.join(ROOT, '.git', 'cf-hold'))) history.commitNow(); } catch {}
     return sendJSON(res, 200, { ok: history.enabled, items: history.list(40) });
   }
   if (url.pathname === '/api/undo' && req.method === 'POST') {
