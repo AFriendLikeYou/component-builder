@@ -1,10 +1,10 @@
 (() => {
   // Zustände (h.state): „loading“ = Skelett in denselben Flächen und Maßen, „empty“ und „error“ = Meldung mit genau einer Handlung.
   // Hover hebt hervor, was man bedienen kann; die Stile hängen an .is-hover (Vorschau) und :hover.
-  // w = feste Breite der Handlung in der Listenzeile (dort ohne Icon, damit der Text daneben Platz hat)
+  // teaser = [Dachzeile, Überschrift] im Teaser; w = feste Breite der Handlung in der Listenzeile (dort ohne Icon, damit der Text daneben Platz hat)
   const MSG = {
-    empty: { icon: 'volume', title: 'Gerade läuft nichts', text: 'Lust auf einen Mix?', action: 'Mix starten', actIcon: 'shuffle', w: 112 },
-    error: { icon: 'close', title: 'Keine Verbindung', text: 'Wiedergabe gestoppt.', action: 'Erneut versuchen', actIcon: 'refresh', w: 152, error: true },
+    empty: { icon: 'volume', title: 'Gerade läuft nichts', text: 'Lust auf einen Mix?', teaser: ['Gerade läuft nichts', 'Lust auf einen Mix?'], action: 'Mix starten', actIcon: 'shuffle', w: 112 },
+    error: { icon: 'close', title: 'Keine Verbindung', text: 'Wiedergabe gestoppt', teaser: ['Wiedergabe gestoppt', 'Keine Verbindung'], action: 'Erneut versuchen', actIcon: 'refresh', w: 152, error: true },
   };
   const sk = (lh, w) => `<span class="mu-sk" style="height:${lh}px;--w:${w}"></span>`;
   const tile = (h, m, cls, area, { size = 24, bleed } = {}) =>
@@ -89,6 +89,7 @@
       .mu-tile .icon { color: var(--c-ink-3); }
       .mu-tile.is-error .icon { color: var(--c-warm); }
       .mu-act { width: 100%; height: 40px; justify-content: center; background: var(--c-ink); color: var(--c-surface); font-weight: 500; }
+      :is(.mu-t, .mu-none) .mu-act { width: auto; }
 
       /* Hover: Bedienbares tritt hervor */
       &:is(:hover, .is-hover) .btn-round.mu-ghost { background: var(--c-fill); }
@@ -274,8 +275,8 @@
               ${tile(h, m, 'mu-img', 'media:bild', { size: 32, bleed: true })}
               <div class="mu-msg">
                 <div class="stack g-8" data-area="text:anreisser">
-                  <p class="t-12 ink-2 clip">${m.text}</p>
-                  <p class="t-24 w-500 clip mu-head" data-role="Überschrift">${m.title}</p>
+                  <p class="t-12 ink-2 clip">${m.teaser[0]}</p>
+                  <p class="t-24 w-500 clip mu-head" data-role="Überschrift">${m.teaser[1]}</p>
                 </div>
                 ${act(h, m)}
               </div>
