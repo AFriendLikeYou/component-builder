@@ -25,5 +25,14 @@ Factory.tweaks("reading", {
         }
       }
     }
+  },
+  "aufmacher": {
+    "el": {
+      "text:artikel": {
+        "cssL": {
+          "flexDirection": "column"
+        }
+      }
+    }
   }
 });
