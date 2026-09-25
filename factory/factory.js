@@ -1981,6 +1981,131 @@ function bindLearned() {
   });
 }
 
+/* ---------- Regeln → Wirkung ---------- */
+// Wirken die Regeln? Aus dem Verlauf (Git): wie gut Claudes erster Wurf ist, wie oft nachgeprüft wird, wie viel
+// Handarbeit danach kommt und was zurückgenommen wird. Die Kennzahlen je Auftrag schreibt tools/serve.mjs als
+// Zeile „Wirkung: …“ in die Commit-Nachricht; ältere Aufträge haben nur Zeit, Komponente, Handarbeit und Rückgängig.
+F.wirkung = null;
+const median = xs => { if (!xs.length) return null; const s = xs.slice().sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const JOB_KIND = [[/^Variante erzeugen/, 'Variante'], [/^Die Variante .* wurde verworfen/, 'Variante entfernt'], [/^Komponentenfamilie|Familie/, 'Familie & Zustände'], [/^(Ändere den Baustein|Neuer Baustein|Nimm den Eigenbau|Stelle Eigenbauten)/, 'Bausteine'], [/^(Baue für die Regel|Aktives Regelwerk)/, 'Regeln'], [/^Leite aus den Rückmeldungen/, 'Leitsätze'], [/^(Breakpoints|Stresstest|Zustände)/, 'Robustheit'], [/^(Übergabe|Svelte|Nach Figma)/, 'Übergabe']];
+const jobKind = s => (JOB_KIND.find(([re]) => re.test(s)) || [null, null])[1];
+function wirkungData(items) {
+  const chron = items.filter(c => !/^Merge /.test(c.subject)).slice().reverse();
+  const compOf = c => (c.files.map(f => f.match(/^components\/([a-z0-9-]+)\.js$/)?.[1]).filter(x => x && x !== '_index'))[0] || null;
+  const jobs = [];
+  chron.forEach((c, idx) => {
+    if (c.kind !== 'claude') return;
+    const w = c.wirkung;
+    const task = c.subject.replace(/^Claude: /, '');
+    const checks = w && w.pruefungen && w.pruefungen !== '-' ? w.pruefungen.split(',').map(p => p.split(':').map(Number)) : null;
+    // Neu, wenn der Auftrag (oder der Zwischenstand, den der Verlauf kurz davor gesichert hat) die Komponente anmeldet
+    const prev = chron[idx - 1];
+    const isNew = c.files.includes('components/_index.js') || !!(prev && prev.kind !== 'claude' && prev.files.includes('components/_index.js') && new Date(c.when) - new Date(prev.when) < 30 * 60e3);
+    jobs.push({
+      c, idx, task, w, checks,
+      comp: w && w.komponente && w.komponente !== '-' ? w.komponente : compOf(c),
+      kind: jobKind(task) || (isNew ? 'Neue Komponente' : 'Änderung'),
+      first: checks ? checks[0][0] : null, last: checks ? checks[checks.length - 1][0] : null,
+      dauer: w ? +w.dauer : null, kosten: w && w.kosten !== '-' ? +w.kosten : null,
+    });
+  });
+  // Handarbeit danach: Feinschliff und Textänderungen an derselben Komponente bis zum nächsten Claude-Auftrag daran
+  for (const j of jobs) {
+    j.hand = 0;
+    if (!j.comp) continue;
+    const mine = f => f.startsWith(`components/${j.comp}.`);
+    for (let k = j.idx + 1; k < chron.length; k++) {
+      const c = chron[k];
+      if (c.kind === 'claude' && c.files.some(mine)) break;
+      if ((c.kind === 'tweak' || c.kind === 'text' || c.files.includes(`components/${j.comp}.tweaks.js`)) && c.files.some(mine)) j.hand++;
+    }
+  }
+  // Regeländerungen: jede Änderung an einem system.js, eingeordnet zwischen die Aufträge
+  const marks = [];
+  chron.forEach((c, idx) => {
+    if (!c.files.some(f => /^systems\/[^/]+\/system\.js$/.test(f))) return;
+    const pos = jobs.filter(j => j.idx <= idx).length; // nach so vielen Aufträgen
+    marks.push({ pos, c, label: c.subject.replace(/^(Claude|Regeln|Gelernt): /, '') });
+  });
+  return { jobs, marks };
+}
+function wirkungChart(jobs, marks) {
+  const W = 1000, H = 240, L = 44, R = 16, T = 20, B = 36;
+  const n = jobs.length;
+  const xs = i => L + (n <= 1 ? (W - L - R) / 2 : (i / (n - 1)) * (W - L - R));
+  const vals = jobs.map(j => j.first).filter(v => v != null);
+  const top = Math.max(4, ...vals);
+  const step = top <= 5 ? 1 : top <= 12 ? 2 : 5;
+  const yMax = Math.ceil(top / step) * step;
+  const ys = v => T + (1 - v / yMax) * (H - T - B);
+  const ticks = []; for (let v = 0; v <= yMax; v += step) ticks.push(v);
+  const pts = jobs.map((j, i) => ({ j, x: xs(i) })).filter(p => p.j.first != null);
+  const line = pts.length > 1 ? `<polyline class="wk-line" points="${pts.map(p => `${p.x.toFixed(1)},${ys(p.j.first).toFixed(1)}`).join(' ')}"/>` : '';
+  return `<svg class="wk-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verstöße im ersten Wurf je Auftrag">
+    ${ticks.map(v => `<line class="wk-grid" x1="${L}" x2="${W - R}" y1="${ys(v)}" y2="${ys(v)}"/><text class="wk-tick" x="${L - 10}" y="${ys(v) + 4}" text-anchor="end">${v}</text>`).join('')}
+    ${marks.map(m => { const x = m.pos <= 0 ? L : m.pos >= n ? W - R : (xs(m.pos - 1) + xs(m.pos)) / 2; return `<g class="wk-mark"><line x1="${x}" x2="${x}" y1="${T}" y2="${H - B}"/><title>${esc(m.c.when.slice(0, 16).replace('T', ' '))} · ${esc(m.label)}</title></g>`; }).join('')}
+    ${line}
+    ${jobs.map((j, i) => j.first == null
+      ? `<circle class="wk-none" cx="${xs(i)}" cy="${H - B}" r="3"><title>${esc(j.task)} · keine Messdaten</title></circle>`
+      : `<circle class="wk-dot ${j.c.undone ? 'is-undone' : j.first === 0 ? 'is-clean' : 'is-bad'}${j.hand ? ' is-hand' : ''}" cx="${xs(i)}" cy="${ys(j.first)}" r="6"><title>${esc(j.task)} · ${j.first} Verstöße im ersten Wurf${j.checks.length > 1 ? `, ${j.last} am Ende` : ''}${j.hand ? ` · ${j.hand}× Handarbeit danach` : ''}</title></circle>`).join('')}
+    <text class="wk-axis" x="${L}" y="${H - 10}">älter</text><text class="wk-axis" x="${W - R}" y="${H - 10}" text-anchor="end">neuer · ${n} Aufträge</text>
+  </svg>`;
+}
+function wirkungHTML() {
+  if (!F.live) return '<p class="rs-pn">Nur mit <code>tools/serve.mjs</code>: Die Wirkung kommt aus dem Verlauf.</p>';
+  if (!F.wirkung) return '<p class="rs-pn">Lädt den Verlauf …</p>';
+  const { jobs, marks } = wirkungData(F.wirkung);
+  if (!jobs.length) return '<p class="rs-pn">Noch keine Aufträge an Claude im Verlauf.</p>';
+  const measured = jobs.filter(j => j.first != null);
+  const clean = measured.filter(j => j.first === 0).length;
+  const runs = median(measured.map(j => j.checks.length));
+  const hand = jobs.filter(j => j.hand > 0).length, undone = jobs.filter(j => j.c.undone).length;
+  const dur = median(measured.map(j => j.dauer).filter(Number.isFinite));
+  const cost = measured.reduce((s, j) => s + (j.kosten || 0), 0);
+  const fb = window.CF_FEEDBACK || [];
+  const kept = fb.filter(e => e.decision === 'behalten').length;
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)} %` : '–');
+  const mins = s => (s == null ? '–' : s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
+  const kpi = (value, label, note) => `<div class="wk-kpi"><b>${value}</b><span>${label}</span>${note ? `<em>${note}</em>` : ''}</div>`;
+  const recent = jobs.slice().reverse().slice(0, 12);
+  const when = iso => new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<p class="rs-pn">Ob die Regeln wirken: wie gut Claudes erster Wurf ist, wie oft nachgeprüft wird und wie viel Handarbeit danach kommt. Alles aus dem Verlauf – jeder Auftrag schreibt seine Kennzahlen in die Commit-Nachricht.${measured.length < 10 ? ` <b>Noch ${measured.length ? `${measured.length} gemessene` : 'keine gemessenen'} Aufträge – eine Tendenz, keine Statistik.</b>` : ''}</p>
+    <div class="wk-kpis">
+      ${kpi(measured.length ? `${clean} von ${measured.length}` : '–', 'erster Wurf ohne Verstoß', measured.length ? pct(clean, measured.length) : 'noch keine Messdaten')}
+      ${kpi(runs == null ? '–' : String(runs).replace('.', ','), 'Prüfläufe je Auftrag', 'Median, ab dem ersten Schreiben')}
+      ${kpi(`${hand} von ${jobs.length}`, 'mit Handarbeit danach', 'Feinschliff oder Text an derselben Komponente')}
+      ${kpi(`${undone} von ${jobs.length}`, 'zurückgenommen', 'Rückgängig im Verlauf')}
+      ${kpi(fb.length ? `${kept} von ${fb.length}` : '–', 'Varianten behalten', fb.length ? pct(kept, fb.length) : '')}
+      ${kpi(mins(dur), 'Dauer je Auftrag', measured.length ? `Median · ${cost.toFixed(2).replace('.', ',')} $ insgesamt` : '')}
+    </div>
+    <div class="wk-chartbox">
+      <p class="wk-legend"><span><i class="is-clean"></i>ohne Verstoß</span><span><i class="is-bad"></i>mit Verstößen</span><span><i class="is-hand"></i>Handarbeit danach</span><span><i class="is-undone"></i>zurückgenommen</span><span><i class="is-mark"></i>Regel geändert</span></p>
+      ${wirkungChart(jobs, marks)}
+      <p class="rs-pnsmall">Verstöße im ersten Prüflauf nach dem Schreiben, je Auftrag. Punkte unten ohne Füllung: ältere Aufträge ohne Messdaten. Sinkt die Kurve nach einer gestrichelten Linie, hat die Regeländerung geholfen.</p>
+    </div>
+    <div class="wk-tablebox"><table class="wk-table">
+      <thead><tr><th>Wann</th><th>Auftrag</th><th>Art</th><th>Komponente</th><th class="num">Erster Wurf</th><th class="num">Prüfläufe</th><th class="num">Handarbeit</th><th class="num">Dauer</th><th class="num">Kosten</th></tr></thead>
+      <tbody>${recent.map(j => `<tr${j.c.undone ? ' class="is-undone"' : ''}>
+        <td class="num">${esc(when(j.c.when))}</td>
+        <td class="wk-task" title="${esc(j.task)}">${esc(j.task)}${j.c.undone ? ' <span class="cf-badge bad">zurückgenommen</span>' : ''}</td>
+        <td>${esc(j.kind)}</td>
+        <td>${esc(F.byId[j.comp]?.name || j.comp || '–')}</td>
+        <td class="num">${j.first == null ? '–' : `${j.first}${j.checks.length > 1 && j.last !== j.first ? ` → ${j.last}` : ''}`}</td>
+        <td class="num">${j.checks ? j.checks.length : '–'}</td>
+        <td class="num">${j.hand || '–'}</td>
+        <td class="num">${mins(j.dauer)}</td>
+        <td class="num">${j.kosten == null ? '–' : `${j.kosten.toFixed(2).replace('.', ',')} $`}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+async function loadWirkung() {
+  if (!F.live || F.wirkung) return;
+  try { const r = await fetch('/api/wirkung', { cache: 'no-store' }); const j = await r.json(); F.wirkung = j.items || []; }
+  catch { F.wirkung = []; }
+  const box = document.getElementById('rs-wirkung');
+  if (box) box.innerHTML = wirkungHTML();
+}
+
 function viewRules(keepScroll) {
   const y = scrollY;
   if (OK0.total == null || !systemDiff().length) Object.assign(OK0, layoutCounts());
@@ -2033,7 +2158,7 @@ function viewRules(keepScroll) {
     <div class="rs-headrow">
       <h1 class="rs-h1">Regeln für alle Komponenten</h1>
       <button type="button" class="cf-btn${rulesEdit ? ' is-primary' : ''}" data-a="rules-edit">${rulesEdit ? `${icon('check', 14)}Fertig` : `${icon('edit', 14)}Regeln anpassen`}</button></div>
-    <nav class="rs-nav" aria-label="Abschnitte"><a href="#regeln">Regeln <em>${S.rules.length}</em></a><a href="#bausteine">Bausteine <em>${(S.atoms || []).length}</em>${ownN ? `<b>${ownN} Eigenbauten</b>` : ''}</a><a href="#gelernt">Gelernt${lsN ? `<b>${lsN} ${lsN === 1 ? 'Vorschlag' : 'Vorschläge'}</b>` : ''}</a><a href="#grundwerte">Grundwerte</a></nav>
+    <nav class="rs-nav" aria-label="Abschnitte"><a href="#regeln">Regeln <em>${S.rules.length}</em></a><a href="#bausteine">Bausteine <em>${(S.atoms || []).length}</em>${ownN ? `<b>${ownN} Eigenbauten</b>` : ''}</a><a href="#gelernt">Gelernt${lsN ? `<b>${lsN} ${lsN === 1 ? 'Vorschlag' : 'Vorschläge'}</b>` : ''}</a><a href="#wirkung">Wirkung</a><a href="#grundwerte">Grundwerte</a></nav>
     ${F.live ? `<div class="rs-syscmp"><button type="button" class="cf-btn" data-a="tok-export">${icon('arrow-up-right', 14)}Tokens exportieren</button><span class="rs-tokout"></span></div>` : ''}
     ${F.live && (window.CF_SYSTEMS || []).length > 1 ? `<div class="rs-syscmp">${(window.CF_SYSTEMS || []).filter(x => x.id !== SYS_ID).map(x => `<button type="button" class="cf-btn" data-syscmp="${esc(x.id)}">${icon('grid', 14)}Mit ${esc(x.name)} vergleichen</button>`).join('')}</div>` : ''}
     <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Aktives Regelwerk: <b>${esc(S.name)}</b>, Quelle ist <code>${SYS_JS}</code> – dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
@@ -2043,6 +2168,7 @@ function viewRules(keepScroll) {
   <section class="rs-rules rs-sec" id="regeln">${S.rules.map(ruleHTML).join('')}${rulesEdit ? `<button type="button" class="cf-btn rs-add" data-a="rule-add">${icon('plus', 14)}Neue Regel</button>` : ''}</section>
   <section class="rs-sec" id="bausteine"><h2 class="rs-h2">Bausteine</h2>${atomsHTML(all)}</section>
   <section class="rs-sec" id="gelernt"><h2 class="rs-h2">Gelernt</h2>${learnedHTML(all)}</section>
+  <section class="rs-sec" id="wirkung"><h2 class="rs-h2">Wirkung</h2><div id="rs-wirkung">${wirkungHTML()}</div></section>
   <h2 class="rs-h2 rs-sec" id="grundwerte">Grundwerte</h2>
   <section class="rs-ref">
     <div class="rs-panel rs-wide">
@@ -2134,6 +2260,7 @@ function viewRules(keepScroll) {
   });
   bindAtoms(all);
   bindLearned();
+  loadWirkung();
   bindDraft();
   if (keepScroll) scrollTo(0, y);
 }
