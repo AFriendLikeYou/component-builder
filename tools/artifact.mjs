@@ -27,6 +27,7 @@ const files = {
   'factory/factory.js': 'factory/factory.js',
   'components/_index.js': 'dist/_index.js',
   ...Object.fromEntries(ids.map(id => [`components/${id}.js`, `components/${id}.js`])),
+  ...Object.fromEntries(ids.filter(id => existsSync(path.join(ROOT, 'components', `${id}.tweaks.js`))).map(id => [`components/${id}.tweaks.js`, `components/${id}.tweaks.js`])),
 };
 const media = existsSync(path.join(ROOT, 'media')) ? readdirSync(path.join(ROOT, 'media')).filter(f => /\.(jpe?g|png|webp|avif|gif|mp4|webm)$/i.test(f)) : [];
 console.log(JSON.stringify({ page: 'dist/artifact.html', components: ids, files, mediaNotPublished: media.length }, null, 2));
