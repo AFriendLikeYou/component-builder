@@ -29,7 +29,7 @@
     id: 'focus',
     name: 'Fokus-Timer',
     aliases: ['focus', 'fokus', 'timer', 'pomodoro', 'konzentration'],
-    dark: true,
+    dark: S => S.id !== 'zds', // im ZDS hell: leise Striche in --c-fill-2, Rot nur für die Restzeit
     data: {
       title: 'Fokus',
       sub: '25-Minuten-Sitzung',
@@ -46,33 +46,33 @@
       current: { at: '11:34', label: 'Entwurf' },
     },
     css: `
-      &.cf-card { --fo-dim: color-mix(in srgb, var(--c-on-dark) 16%, transparent); }
+      &.cf-card { --fo-dim: var(--c-fill-2); }
+      &.is-dark { --fo-dim: color-mix(in srgb, var(--c-on-dark) 16%, transparent); }
       .fo-head { align-items: flex-start; }
       .fo-warm { color: var(--c-warm); }
-      .fo-btn { height: 40px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; background: var(--c-dark-2); color: var(--c-on-dark); }
-      .fo-btn.is-main { background: var(--c-warm); color: var(--c-dark); }
-      .btn-round.is-main { background: var(--c-warm); color: var(--c-dark); }
-      .btn-round.fo-big { width: 48px; height: 48px; }
+      /* Hauptaktion warm; Form und Höhe aus den Bausteinen .btn-pill.lg und .btn-round.lg */
+      .btn-pill.is-main, .btn-round.is-main { background: var(--c-warm); color: var(--c-on-dark); }
+      &.is-dark .is-main { color: var(--c-dark); }
 
       .fo-ring { display: flex; flex-direction: column; gap: 16px; }
-      .fo-dial { position: relative; width: 192px; height: 192px; align-self: center; border-radius: 999px; }
+      .fo-dial { position: relative; width: 192px; height: 192px; align-self: center; border-radius: var(--r-pill); }
       .fo-svg { display: block; }
-      .fo-mid { position: absolute; left: 32px; top: 32px; width: 128px; height: 128px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      .fo-mid { position: absolute; left: 32px; top: 32px; width: 128px; height: 128px; border-radius: var(--r-pill); display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .fo-ctl { display: flex; justify-content: center; gap: 8px; }
 
       .fo-strip { display: flex; flex-direction: column; gap: 16px; }
       .fo-val { height: 40px; display: flex; align-items: baseline; justify-content: space-between; }
       .fo-bar { height: 16px; display: flex; justify-content: space-between; }
-      .fo-bar i { width: 4px; height: 16px; border-radius: 999px; background: var(--fo-dim); }
+      .fo-bar i { width: 4px; height: 16px; border-radius: var(--r-pill); background: var(--fo-dim); }
       .fo-bar i.on { background: var(--c-warm); }
 
       .fo-day { display: flex; flex-direction: column; gap: 16px; }
       .fo-list { display: flex; flex-direction: column; gap: 8px; }
       .fo-item { height: 24px; display: flex; align-items: center; gap: 16px; }
-      .fo-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--c-warm); flex: none; }
+      .fo-dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--c-warm); flex: none; }
       .fo-item.is-now .fo-dot { background: none; box-shadow: inset 0 0 0 2px var(--c-warm); }
       .fo-item .at { width: 40px; flex: none; }
-      .fo-sum { height: 40px; display: flex; align-items: flex-end; justify-content: space-between; border-top: 1px solid var(--fo-dim); padding-top: 15px; }
+      .fo-sum { height: 40px; display: flex; align-items: flex-end; justify-content: space-between; box-shadow: inset 0 1px 0 var(--fo-dim); padding-top: 16px; }
     `,
     layouts: [
       {
@@ -91,8 +91,8 @@
               </div>
             </div>
             <div class="fo-ctl" data-area="control:steuerung">
-              <button class="fo-btn t-14">${h.icon('refresh', 18)}Neu starten</button>
-              <button class="fo-btn is-main t-14 w-500">${h.icon('pause', 18)}Pause</button>
+              <button class="btn-pill lg t-14">${h.icon('refresh', 18)}Neu starten</button>
+              <button class="btn-pill lg is-main t-14 w-500">${h.icon('pause', 18)}Pause</button>
             </div>
           </div>`,
       },
@@ -103,7 +103,7 @@
         height: 184,
         render: (d, h) => `
           <div class="fo-strip">
-            ${head(d, `<div data-area="control:pause"><button class="btn-round is-main fo-big" aria-label="Pause">${h.icon('pause', 20)}</button></div>`)}
+            ${head(d, `<div data-area="control:pause"><button class="btn-round lg is-main" aria-label="Pause">${h.icon('pause', 20)}</button></div>`)}
             <div class="fo-val" data-area="text:restzeit">
               <p class="t-32 num" data-role="Restzeit">${d.left} Min.</p>
               <p class="t-14 ink-2 num">bis ${d.until}</p>
