@@ -36,7 +36,7 @@
       .ib-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent); }
       .ib-line { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
       .ib-thumbs { display: flex; gap: 8px; }
-      .ib-thumb { border-radius: 8px; flex: none; }
+      .ib-thumb { border-radius: var(--r-8); flex: none; }
 
       /* Agenten: Liste mit zweizeiliger Vorschau */
       .ib-list { display: flex; flex-direction: column; gap: 16px; }
@@ -61,9 +61,10 @@
       .ib-from { height: 32px; display: flex; align-items: center; gap: 16px; }
       .ib-f .ib-thumbs { margin-top: 16px; }
       .ib-f .ib-thumb { width: 96px; height: 96px; }
-      .ib-bar { margin-top: 24px; height: 48px; border-radius: 999px; background: var(--c-fill); display: flex; align-items: center; gap: 16px; padding: 0 8px 0 24px; }
-      .ib-bar .ib-next { display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; }
-      .ib-bar .btn-round { margin-left: auto; background: var(--c-surface); }
+      .ib-bar { margin-top: 24px; height: 48px; border-radius: var(--r-pill); background: var(--c-fill); display: flex; align-items: center; gap: 16px; padding: 0 8px 0 16px; }
+      .ib-bar .btn-text { min-width: 0; color: var(--c-ink); }
+      .ib-bar .btn-text .ib-dot { flex: none; }
+      .ib-bar .btn-round { flex: none; margin-left: auto; background: var(--c-surface); }
     `,
     layouts: [
       {
@@ -123,7 +124,7 @@
             </div>
             ${m.media ? thumbs(m, h) : ''}
             <div class="ib-bar" data-area="control:weitere">
-              ${rest.map(x => `<button class="ib-next t-12 w-500">${dot(x)}${h.esc(x.from)}</button>`).join('')}
+              ${rest.map(x => `<button class="btn-text t-12 w-500">${dot(x)}<span class="clip">${h.esc(x.from)}</span></button>`).join('')}
               <button class="btn-round sm" aria-label="Alle Nachrichten">${h.icon('chevron-right', 16)}</button>
             </div>
           </div>`;
