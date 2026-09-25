@@ -116,6 +116,20 @@
       .ft-link { height: 32px; padding: 0 8px; margin-right: -8px; color: var(--c-accent); }
       .ft-none { height: 192px; align-items: center; justify-content: center; gap: 16px; text-align: center; }
       .ft-badge { width: 48px; height: 48px; border-radius: 999px; display: grid; place-items: center; background: var(--c-fill); color: var(--c-ink-3); }
+
+      /* Strecke · Bildstärker: randabfallendes Foto, Kürzel und Flugzeug darauf, darunter knapp Zeiten und Restzeit */
+      .ft-b { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 232px 24px 40px; height: 100%; }
+      .ft-bild { grid-row: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+      .ft-bild > * { grid-area: 1 / 1; position: relative; } /* cf-media ist positioniert; so malt alles danach darüber */
+      .ft-foto { width: 100%; height: 100%; }
+      .ft-scrim { align-self: end; height: 176px; background: linear-gradient(to top, color-mix(in srgb, var(--c-dark) 64%, transparent), transparent); }
+      .ft-bild .ft-status { align-self: start; justify-self: start; margin: 24px; background: var(--c-surface); }
+      .ft-bild .ft-route { align-self: end; margin: 24px; grid-template-columns: minmax(0, auto) minmax(48px, 1fr) minmax(0, auto); color: var(--c-on-dark); }
+      .ft-track { position: relative; height: 32px; display: grid; align-items: center; }
+      .ft-bild .ft-plane { width: 32px; height: 32px; margin-left: -16px; border-radius: 999px; box-shadow: 0 4px 12px -4px rgba(0, 0, 0, .4); }
+      .ft-unter { grid-row: 3; margin: 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); gap: 16px; }
+      .ft-unter > .stack { min-width: 0; }
+      .ft-c { text-align: center; min-width: 0; }
     `,
     layouts: [
       {
@@ -220,6 +234,40 @@
                 </div>` : ''}
               </div>
             </div>`;
+        },
+      },
+      {
+        id: 'strecke-bildstaerker',
+        name: 'Strecke · Bildstärker',
+        family: 'karte',
+        variantOf: 'strecke',
+        direction: 'bildstaerker',
+        idea: 'Ein randabfallendes Foto füllt zwei Drittel der Karte, Kürzel und Flugzeug stehen groß darauf statt auf Weiß. Darunter bleiben nur Zeiten und Restzeit, genau unter ihren Kürzeln – so führt das Bild, und die Strecke liest sich wie im Original.',
+        height: 320,
+        padding: 0,
+        render: (d, h) => {
+          const p = Math.min(1, Math.max(0, d.progress));
+          return `
+          <div class="ft-b">
+            <div class="ft-bild" data-bleed data-area="media:bild">
+              ${h.media(0, { class: 'ft-foto' })}
+              <span class="ft-scrim"></span>
+              <span class="chip t-12 w-500 ft-status"><span class="clip">${h.esc(d.flight)} · ${h.esc(d.status)}</span></span>
+              <div class="ft-route" data-area="text:strecke">
+                <p class="t-32 w-500 clip">${h.esc(d.from.code)}</p>
+                <div class="ft-track" style="--p:${p}">
+                  <div class="progress on-media"><i></i></div>
+                  <span class="ft-plane">${jet(20)}</span>
+                </div>
+                <p class="t-32 w-500 clip">${h.esc(d.to.code)}</p>
+              </div>
+            </div>
+            <div class="ft-unter" data-area="meta:zeiten">
+              <div class="stack"><p class="t-16 w-500 num">${h.esc(d.from.time)}</p><p class="t-12 ink-2 clip">${h.esc(d.from.city)}</p></div>
+              <div class="stack ft-c"><p class="t-16 w-500 num clip">${dur(d.remaining)}</p><p class="t-12 ink-2 clip">bis zur Landung</p></div>
+              <div class="stack ft-r"><p class="t-16 w-500 num">${h.esc(d.to.time)}</p><p class="t-12 ink-2 clip">${h.esc(d.to.city)}</p></div>
+            </div>
+          </div>`;
         },
       },
     ],
