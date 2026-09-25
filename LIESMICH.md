@@ -26,6 +26,8 @@ Das startet die Seite mit Live-Reload und verbindet die Eingabezeile mit deinem 
   - **Bausteine**: alle Bedienelemente des Regelwerks (runder Knopf, Knopf mit Text, Textknopf, Umschalter, Abhaken, Chip, Fortschritt) mit ihren Varianten, wo sie verwendet werden, und die Icons. Darunter die **Eigenbauten**: was eine Komponente selbst gebaut hat statt einen Baustein zu nehmen. Je Eigenbau **Auf Baustein umstellen** oder **Als Baustein aufnehmen** (dann steht die Form allen Komponenten zur Verfügung).
   - **Gelernt**: was Claude aus euren Rückmeldungen ableitet. **Leitsätze** mit ihren Belegen – ein Vorschlag gilt erst, wenn du ihn **bestätigst**; bestätigte liest Claude wie Soll-Regeln und du kannst sie **zur Regel machen**. Dazu die Entscheidungen zu Varianten, akzeptierte Ausnahmen und offener Feinschliff. **Leitsätze neu ableiten** lässt Claude alles noch einmal durchgehen.
 
+**Regeln oder Bausteine ergänzen?** Schritt für Schritt in [ANLEITUNG.md](ANLEITUNG.md): wo was liegt, wie neue Regeln und Messungen entstehen, wie Bausteine angelegt oder fürs ZDS abgewandelt werden und wie sie nach Figma kommen.
+
 ## Regelwerke: Fabrik und ZDS
 
 Oben rechts schaltest du zwischen zwei Regelwerken um. **Fabrik** ist das 8-px-System dieses Experiments. **ZDS** ist das ZEIT Design System: Tablet Gothic und Zeit Tiemann Schmal, Farben, Grade, Zeilenhöhen, Radien und Abstände aus dem öffentlichen Paket `@zeitonline/design-system`, dazu die Vorgaben „keine dunklen Flächen“ und „Tiemann nur für Überschriften“. Dieselben Komponenten erscheinen dann in ZDS und werden nach dessen Regeln gemessen. In „Regeln“ vergleicht **Mit ZDS vergleichen** beide Systeme nebeneinander; `node tools/check.mjs --system zds` prüft im Terminal.

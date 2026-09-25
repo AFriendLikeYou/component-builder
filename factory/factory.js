@@ -1740,7 +1740,7 @@ function ownAdoptPrompt(g) {
     return `Nimm das Icon „${n}“ aus components/${g.c.id}.js in den Icon-Satz auf: ICONS in factory/factory.js (24er viewBox, Linien mit stroke 1.6 wie die übrigen) und die Icon-Liste in CLAUDE.md. Ersetze danach das eigene SVG in der Komponente durch h.icon('${n}', …). Prüfe mit node tools/check.mjs ${g.c.id} --system ${SYS_ID}.`;
   }
   const a = atomById(g.suggest);
-  return `Nimm den Eigenbau ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}) aus components/${g.c.id}.js als Baustein auf. Ergänze in ALLEN Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css) eine Variante eines bestehenden Bausteins${a ? ` (naheliegend: ${a.name} ${a.match})` : ''} oder einen neuen Baustein – mit id, name, match, use, variants und sample wie die übrigen, Farben nur als Tokens, im ZDS-Regelwerk mit den ZDS-Radien und -Abständen. Stelle danach die Komponente auf den Baustein um und entferne ihr eigenes CSS dafür. Prüfe mit node tools/check.mjs --system fabrik und node tools/check.mjs --system zds.`;
+  return `Nimm den Eigenbau ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}) aus components/${g.c.id}.js als Baustein auf. Ergänze in ALLEN Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css) eine Variante eines bestehenden Bausteins${a ? ` (naheliegend: ${a.name} ${a.match})` : ''} oder einen neuen Baustein – mit id, name, match, use, variants und sample wie die übrigen, Farben nur als Tokens, im ZDS-Regelwerk mit den ZDS-Radien und -Abständen. Ergänze die Kurzliste im Abschnitt „Bausteine“ von CLAUDE.md. Stelle danach die Komponente auf den Baustein um und entferne ihr eigenes CSS dafür. Prüfe mit node tools/check.mjs --system fabrik und node tools/check.mjs --system zds.`;
 }
 function atomsHTML(all) {
   const A = S.atoms || [];
@@ -1819,11 +1819,11 @@ function atomChangePrompt(a, wish, scope) {
   const where = scope === 'all' ? 'in allen Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css)' : `nur im Regelwerk ${S.name} (${SYS_JS} unter atoms, CSS in ${SYS_CSS})`;
   return `Ändere den Baustein „${a.name}“ (${a.match}) ${where}: ${wish}
 Die Klasse ${a.match} und die Namen ihrer Varianten sind der gemeinsame Name, den die Komponenten benutzen; Form, Größen und Aussehen legt jedes Regelwerk selbst fest. Neue Varianten in atoms mit Namen und im sample eintragen, CSS nur mit Tokens des Regelwerks.${scope !== 'all' ? ' Gibt es eine neue Variante nur hier, bekommen die übrigen Regelwerke dieselbe Klasse als schlichte Fassung, damit Komponenten überall funktionieren.' : ''}
-Ändert sich eine Höhe oder Breite, prüfe die Komponenten, die den Baustein benutzen (node tools/check.mjs --system ${SYS_ID}${scope === 'all' ? ' und jedes andere Regelwerk' : ''}), und gleiche Layouts an, die dadurch brechen. Ändere die Komponenten sonst nicht.`;
+Ändert sich eine Höhe oder Breite, prüfe die Komponenten, die den Baustein benutzen (node tools/check.mjs --system ${SYS_ID}${scope === 'all' ? ' und jedes andere Regelwerk' : ''}), und gleiche Layouts an, die dadurch brechen. Ändere die Komponenten sonst nicht. Kommen Varianten dazu oder fallen weg, passe die Kurzliste im Abschnitt „Bausteine“ von CLAUDE.md an.`;
 }
 function atomNewPrompt(name, wish, scope) {
   return `Neuer Baustein „${name}“: ${wish}
-Lege ihn ${scope === 'all' ? 'in allen Regelwerken' : `im Regelwerk ${S.name} (${SYS_JS}, ${SYS_CSS})`} an: Eintrag unter atoms (id, name, match, use, variants, sample wie die übrigen; control: false, wenn man ihn nicht bedient) und CSS in system.css, Farben nur als Tokens.${scope !== 'all' ? ' Die übrigen Regelwerke bekommen dieselbe Klasse als schlichte Fassung, damit Komponenten überall funktionieren.' : ''} Setze ihn noch in keiner Komponente ein. Prüfe mit node tools/check.mjs --system ${SYS_ID}.`;
+Lege ihn ${scope === 'all' ? 'in allen Regelwerken' : `im Regelwerk ${S.name} (${SYS_JS}, ${SYS_CSS})`} an: Eintrag unter atoms (id, name, match, use, variants, sample wie die übrigen; control: false, wenn man ihn nicht bedient) und CSS in system.css, Farben nur als Tokens.${scope !== 'all' ? ' Die übrigen Regelwerke bekommen dieselbe Klasse als schlichte Fassung, damit Komponenten überall funktionieren.' : ''} Ergänze ihn in der Kurzliste im Abschnitt „Bausteine“ von CLAUDE.md. Setze ihn noch in keiner Komponente ein. Prüfe mit node tools/check.mjs --system ${SYS_ID}.`;
 }
 function bindAtoms(all) {
   main.querySelectorAll('[data-atomopen]').forEach(b => b.addEventListener('click', () => {
