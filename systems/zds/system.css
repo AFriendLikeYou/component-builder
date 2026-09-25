@@ -136,7 +136,8 @@
 .btn-round.ghost { background: none; }
 .btn-round.float { background: var(--c-surface); color: var(--c-ink); box-shadow: 0 8px 24px -8px rgba(0, 0, 0, .4); }
 
-.btn-pill { height: 32px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; background: var(--c-fill); }
+/* Im ZDS sind Knöpfe mit Text eckig: 4 px Radius statt Pille */
+.btn-pill { height: 32px; padding: 0 16px; border-radius: var(--z-ds-border-radius-4); display: inline-flex; align-items: center; gap: 8px; background: var(--c-fill); }
 .btn-pill.lg { height: 40px; }
 .is-dark .btn-pill { background: var(--c-dark-2); }
 .btn-pill.solid { background: var(--c-ink); color: var(--c-surface); }
