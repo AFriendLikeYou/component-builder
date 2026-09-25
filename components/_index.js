@@ -14,4 +14,5 @@ Factory.load([
   'video',
   'flight',
   'stock',
+  'moon',
 ]);
