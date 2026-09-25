@@ -148,7 +148,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/export' && req.method === 'POST') {
     readBody(req).then(b => {
       const kind = String(b?.kind || ''), sys = String(b?.system || 'fabrik'), cid = b?.id ? String(b.id) : null;
-      if (!['tokens', 'html', 'figma', 'all'].includes(kind) || !/^[a-z0-9-]+$/.test(sys) || (cid && !validId(cid))) return sendJSON(res, 400, { ok: false, error: 'Ungültiger Export' });
+      if (!['tokens', 'html', 'figma', 'wc', 'all'].includes(kind) || !/^[a-z0-9-]+$/.test(sys) || (cid && !validId(cid))) return sendJSON(res, 400, { ok: false, error: 'Ungültiger Export' });
       execFile(process.execPath, [path.join(ROOT, 'tools', 'export.mjs'), kind, ...(cid ? [cid] : []), '--system', sys], { cwd: ROOT, timeout: 120000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
         const line = String(stdout || '').trim().split('\n').pop();
         try { const j = JSON.parse(line); console.log(`⇪ Export ${kind}${cid ? ` ${cid}` : ''} (${sys}): ${j.files.length} Dateien`); return sendJSON(res, 200, j); } catch {}

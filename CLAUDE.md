@@ -93,8 +93,9 @@ Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts
 
 ## Übergabe (Code und Figma)
 
-- `node tools/export.mjs tokens|html|figma|all [id] --system <id>` schreibt nach `export/<regelwerk>/`: `tokens.json` (W3C Design Tokens) und `tokens.css`, je Komponente eine eigenständige HTML-Seite, `<id>.figma.json` für Figma. `export/` ist nicht im Repository.
-- React-Übergaben landen in `export/<regelwerk>/<id>/react/` (Komponente mit Props für Inhalte, `layout` und `state`, CSS-Module, Tokens nur als CSS-Variablen). Die Quelle `components/<id>.js` bleibt unverändert.
+- `node tools/export.mjs tokens|html|figma|wc|all [id] --system <id>` schreibt nach `export/<regelwerk>/`: `tokens.json` (W3C Design Tokens) und `tokens.css`, je Komponente eine eigenständige HTML-Seite, `<id>.figma.json` für Figma. `export/` ist nicht im Repository.
+- **Web Component** (`node tools/export.mjs wc <id>`): `<cf-<id>>` mit Shadow DOM; enthält den unveränderten Quelltext der Komponente, die Tokens des Regelwerks und den Feinschliff. Attribute `layout`, `state`, `width`; Eigenschaften `data`, `images`.
+- **Svelte**-Übergaben schreibst du nach `export/<regelwerk>/<id>/svelte/` (Svelte-5-Komponente mit Runes, Props für Inhalte, `layout` und `state`, scoped Styles, Tokens nur als CSS-Variablen aus `tokens.css`). Die Quelle `components/<id>.js` bleibt unverändert.
 - Figma: `tools/figma-builder.js` per `figma_execute` ausführen (legt `globalThis.CF` an), dann `await CF.build(daten)` oder `await CF.buildFromURL(url)`. Ergebnis: Seite „Component Factory“ → Section je Regelwerk → Component Set je Komponente mit den Layouts als Varianten, Auto-Layout, Farben als lokale Variablen „Component Factory · <Regelwerk>“. Vorher Datei mit `figma_navigate` (lock) pinnen, nie in Bibliotheksdateien bauen (ZDS-Icons, ZDS-Dokument).
 
 ## Sonst

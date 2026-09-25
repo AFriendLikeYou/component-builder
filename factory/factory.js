@@ -1231,17 +1231,17 @@ async function runExport(kind, cid) {
   return j.files || [];
 }
 const fileLinks = files => files.map(f => `<a href="/${esc(f)}" target="_blank" rel="noopener"><code>${esc(f)}</code></a>`).join(' ');
-function reactPrompt(c) {
+function sveltePrompt(c) {
   const Name = c.id.replace(/(^|-)([a-z])/g, (m, a, b) => b.toUpperCase());
-  return `Übergabe als React: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
+  return `Übergabe als Svelte: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
 Erst node tools/export.mjs tokens --system ${SYS_ID} und node tools/export.mjs html ${c.id} --system ${SYS_ID} (Referenz, exakt so soll es aussehen).
-Dann schreib export/${SYS_ID}/${c.id}/react/${Name}.jsx, ${Name}.module.css und README.md:
-- eine Funktionskomponente <${Name} layout="${c.layouts[0].id}" …>, layout ∈ ${c.layouts.map(l => `"${l.id}"`).join(', ')}${(c.states || []).length ? `, optional state ∈ ${c.states.map(x => `"${x}"`).join(', ')}` : ''}
+Dann schreib export/${SYS_ID}/${c.id}/svelte/${Name}.svelte und README.md:
+- eine Svelte-5-Komponente (Runes: \$props, \$derived) <${Name} layout="${c.layouts[0].id}" …>, layout ∈ ${c.layouts.map(l => `"${l.id}"`).join(', ')}${(c.states || []).length ? `, optional state ∈ ${c.states.map(x => `"${x}"`).join(', ')}` : ''}
 - Props für alle Inhalte aus data (sinnvolle Namen, Standardwerte = heutige Beispieldaten), Bilder als src-Props
-- Markup, Flächen und Maße 1:1 wie in der Fabrik; Klassen als CSS-Module; Tokens nur als CSS-Variablen aus export/${SYS_ID}/tokens.css, keine festen Farbwerte
-- Bedienelemente als echte <button> mit aria-label, onClick-Props
-- README: Einbindung, Props-Tabelle, Hinweis auf tokens.css und die Schriften
-Keine neuen Abhängigkeiten außer React. Ändere components/${c.id}.js nicht.`;
+- Markup, Flächen und Maße 1:1 wie in der Fabrik; Stile im <style> der Komponente (scoped); Tokens nur als CSS-Variablen aus export/${SYS_ID}/tokens.css, keine festen Farbwerte
+- Bedienelemente als echte <button> mit aria-label, Callback-Props (onplay, onselect …)
+- README: Einbindung (SvelteKit und Vite), Props-Tabelle, Hinweis auf tokens.css und die Schriften
+Keine neuen Abhängigkeiten außer svelte. Ändere components/${c.id}.js nicht.`;
 }
 function figmaPrompt(c) {
   return `Übergabe nach Figma: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
@@ -1262,7 +1262,8 @@ function bindHandoff(sec, c) {
       <div class="cf-hand">
         <div><b>HTML + CSS</b><span>Eigenständige Seite mit allen Layouts, Tokens und Typo-Klassen.</span><button type="button" class="cf-btn" data-ex="html"${F.live ? '' : ' disabled'}>Exportieren</button></div>
         <div><b>Tokens</b><span>W3C-Design-Tokens (JSON) und CSS-Variablen des Regelwerks.</span><button type="button" class="cf-btn" data-ex="tokens"${F.live ? '' : ' disabled'}>Exportieren</button></div>
-        <div><b>React</b><span>Komponente mit Props für Inhalte, Layout und Zustand, CSS-Module, README.</span><button type="button" class="cf-btn is-primary" data-ex="react">${F.live ? 'Von Claude bauen lassen' : 'Anweisung für Claude'}</button></div>
+        <div><b>Web Component</b><span>&lt;cf-${esc(c.id)}&gt; mit Shadow DOM – derselbe Code wie hier, samt Feinschliff und Zuständen; Inhalte über el.data.</span><button type="button" class="cf-btn" data-ex="wc"${F.live ? '' : ' disabled'}>Exportieren</button></div>
+        <div><b>Svelte</b><span>Svelte-5-Komponente mit Props für Inhalte, Layout und Zustand, README.</span><button type="button" class="cf-btn is-primary" data-ex="svelte">${F.live ? 'Von Claude bauen lassen' : 'Anweisung für Claude'}</button></div>
         <div><b>Figma</b><span>Component Set mit den Layouts als Varianten, Auto-Layout, Farben als Variablen.</span><button type="button" class="cf-btn" data-ex="figma-data"${F.live ? '' : ' disabled'}>Figma-Daten</button><button type="button" class="cf-btn is-primary" data-ex="figma">${F.live ? 'Nach Figma (Claude)' : 'Anweisung für Claude'}</button></div>
       </div>
       <p class="cf-handout"></p>
@@ -1270,8 +1271,8 @@ function bindHandoff(sec, c) {
     const out = bar.querySelector('.cf-handout'), log = bar.querySelector('.cf-handlog');
     bar.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', async () => {
       const k = b.dataset.ex;
-      if (k === 'react' || k === 'figma') {
-        const prompt = k === 'react' ? reactPrompt(c) : figmaPrompt(c);
+      if (k === 'svelte' || k === 'figma') {
+        const prompt = k === 'svelte' ? sveltePrompt(c) : figmaPrompt(c);
         if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
         bar.querySelectorAll('button').forEach(x => { x.disabled = true; });
         return generate(prompt, { log, view: 'layouts', figma: k === 'figma' });
@@ -2996,6 +2997,19 @@ function cssTextOf(match) {
   }
   return out.join('\n');
 }
+
+// Laufzeit für Web Components: dieselben Helfer wie in der Fabrik, als Quelltext
+F.exportRuntime = () => ({
+  icons: ICONS,
+  system: (({ rules, ...rest }) => rest)(S),
+  code: [
+    `const esc = ${esc};`, `const hash = ${hash};`, `const pad2 = ${pad2};`, 'let NOW = new Date();',
+    zoned.toString(), placeholder.toString(),
+    `const SLOTS = ${JSON.stringify(SLOTS)};`, `const mergedCSS = ${mergedCSS};`, `const areaSel = ${areaSel};`, `const isLeaf = ${isLeaf};`,
+    leavesOf.toString(), resolveText.toString(), resolveEl.toString(), setLeafText.toString(), applyTweaks.toString(),
+  ].join('\n'),
+  componentCSS: Object.fromEntries([...document.querySelectorAll('style[data-component]')].map(st => [st.dataset.component, st.textContent])),
+});
 
 F.exportTokens = () => ({
   system: SYS_ID, name: S.name, version: S.version,
