@@ -1118,6 +1118,11 @@ function ruleFigure(rule, ex) {
     case 'R5': return mini(`<div class="cf-shell cf-layer" style="width:${bp.w}px;height:${bp.h}px">${areaRects(bp)}</div>`, bp.w, bp.h, .64);
     case 'R6': return mini(layerCard('structure', bp), bp.w, bp.h, .64);
     case 'R7': return `<div class="rs-dots">${colorTokens().slice(0, 12).map(t => `<i style="background:${t.value}" title="${esc(t.name)}"></i>`).join('')}</div>`;
+    case 'R10': {
+      const m = S.minTarget || 32;
+      const box = (n, cls, label) => `<div class="${cls}"><i style="width:${n}px;height:${n}px"></i><span>${label}</span></div>`;
+      return `<div class="rs-targets">${box(Math.max(16, m - 8), 'is-bad', `${Math.max(16, m - 8)} · zu klein`)}${box(m, 'is-ok', `${m} · Minimum`)}${box(m + 12, '', `${m + 12}`)}</div>`;
+    }
     case 'R11': {
       const k = F.consistency || {};
       return `<div class="rs-cons"><p><span>Kopfzeile</span><b>${k.style ? esc(k.style.label) : 'keine klare Mehrheit'}</b>${k.style ? `<em>${k.style.count} von ${k.style.of} Layouts</em>` : ''}</p><p><span>Abstand darunter</span><b>${k.gap ? `${k.gap.value} px` : 'keine klare Mehrheit'}</b>${k.gap ? `<em>${k.gap.count} von ${k.gap.of} Layouts</em>` : ''}</p></div>`;
