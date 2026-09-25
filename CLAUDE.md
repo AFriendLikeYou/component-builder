@@ -8,7 +8,7 @@ Es gibt mehrere **Regelwerke** in `systems/<id>/`: `fabrik` (8-px-Raster, Inter 
 
 **Lies vor jeder Arbeit `systems/<id>/system.js` des aktiven Regelwerks** und die zugehörige `system.css`. Dort stehen alle Regeln (`rules`) und Werte. Nur Messungen, die eine Regel unter `checks` führt, zählen. Die Fabrik zeigt dieselben Regeln in der Ansicht „Regeln“; `node tools/check.mjs --system <id>` misst sie.
 
-Komponenten sollen in **beiden** Regelwerken funktionieren: nur `--c-*`-Tokens und `.t-*`-Klassen, keine festen Farbwerte (die übersetzt `systems/zds/system.css` sonst nicht). Wer ausdrücklich für ZDS baut, darf `--z-ds-*` direkt nutzen und nimmt die ZDS-Grade `.t-18`, `.t-22`, `.t-30` usw. Die Werte können sich ändern – der Nutzer passt Regeln in der Ansicht „Regeln“ live an. Lies sie deshalb jedes Mal, statt sie anzunehmen. `{unit}`, `{inset}` usw. in Regeltexten sind Platzhalter für die Werte darüber.
+Komponenten sollen in **beiden** Regelwerken funktionieren: nur `--c-*`-Tokens und `.t-*`-Klassen, keine festen Farbwerte (die übersetzt `systems/zds/system.css` sonst nicht). Wer ausdrücklich für ZDS baut, darf `--z-ds-*` direkt nutzen und nimmt die ZDS-Grade `.t-18`, `.t-22`, `.t-30` usw. Regeln haben eine Stufe: **Muss** (Standard, zählt als Verstoß) oder **Soll** (`level: 'soll'`, nur Hinweis). Die Werte können sich ändern – der Nutzer passt Regeln in der Ansicht „Regeln“ live an. Lies sie deshalb jedes Mal, statt sie anzunehmen. `{unit}`, `{inset}` usw. in Regeltexten sind Platzhalter für die Werte darüber.
 
 ## Eine Komponente bauen
 
@@ -76,8 +76,9 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 - `height`: Kartenhöhe des Layouts.
 - `locks`: **gesperrte Flächen – Lage und Größe nie ändern** (R9, wird gemessen).
 - `notes`: Aufträge des Nutzers an einzelne Flächen.
+- `exceptions`: bewusst akzeptierte Abweichungen (Regel, Meldung, Grund, Regelwerk). **Nicht „beheben“** – sie sind eine Entscheidung des Nutzers.
 
-„In den Code einarbeiten“ heißt: `el`, `text`, `height` sauber in `components/<id>.js` übernehmen (CSS in `css`, Reihenfolge im Markup oder in `data`, Texte in `data`), Notizen erledigen, danach in der Datei für dieses Layout nur `locks` stehen lassen. Das Ergebnis muss genauso aussehen wie vorher mit Feinschliff.
+„In den Code einarbeiten“ heißt: `el`, `text`, `height` sauber in `components/<id>.js` übernehmen (CSS in `css`, Reihenfolge im Markup oder in `data`, Texte in `data`), Notizen erledigen, danach in der Datei für dieses Layout nur `locks` und `exceptions` stehen lassen. Das Ergebnis muss genauso aussehen wie vorher mit Feinschliff.
 
 ## Sonst
 

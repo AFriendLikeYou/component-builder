@@ -97,7 +97,7 @@ window.SYSTEM = {
       text: 'Buttons und andere Bedienelemente sind mindestens {minTarget} × {minTarget} px groß.',
     },
     {
-      id: 'Z12', title: 'Einheitlich über alle Komponenten', checks: ['consistency'],
+      id: 'Z12', title: 'Einheitlich über alle Komponenten', checks: ['consistency'], level: 'soll',
       text: 'Gleiche Rolle, gleiche Gestaltung: Die Kopfzeile (`text:kopf`) nutzt überall denselben Textstil und denselben Abstand zum Inhalt darunter – Maßstab ist die klare Mehrheit.',
     },
   ],

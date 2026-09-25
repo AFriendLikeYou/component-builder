@@ -41,7 +41,7 @@ if (asJSON) {
 }
 
 const { unit, inset, limits } = report.system;
-const dim = s => `\x1b[2m${s}\x1b[0m`, red = s => `\x1b[31m${s}\x1b[0m`, green = s => `\x1b[32m${s}\x1b[0m`;
+const dim = s => `\x1b[2m${s}\x1b[0m`, red = s => `\x1b[31m${s}\x1b[0m`, green = s => `\x1b[32m${s}\x1b[0m`, amber = s => `\x1b[33m${s}\x1b[0m`;
 console.log(dim(`Component Factory · Prüfung · ${report.system.name} · ${unit > 1 ? `Raster ${unit} px` : 'Abstandsskala'} · Inset ${inset} px · max. ${limits.sizes} Größen / ${limits.weights} Schnitte / ${limits.families} Familien`));
 
 const loadErr = report.loadErrors.filter(e => !only.length || only.some(id => e.includes(id)));
@@ -58,6 +58,8 @@ for (const c of comps) {
     const meta = `${l.w} × ${l.h} · ${l.areas} Flächen · ${t.sizes.join('/')} px · ${t.weights.join('/')} · ${t.families.map(f => f.replace('Libre ', '')).join(' + ')}`;
     console.log(`  ${l.violations.length ? red('✕') : green('✓')} ${l.name.padEnd(16)} ${dim(meta)}`);
     for (const v of l.violations) console.log(`      ${red(v.rule.padEnd(9))} ${v.msg}`);
+    for (const v of l.warnings || []) console.log(`      ${amber(('soll ' + v.rule).padEnd(9))} ${v.msg}`);
+    for (const v of l.accepted || []) console.log(dim(`      ausnahme  ${v.msg}${v.reason ? ` – ${v.reason}` : ''}`));
   }
 }
 if (stress) {
@@ -70,5 +72,7 @@ if (stress) {
   }
 }
 const layouts = comps.reduce((s, c) => s + c.layouts.length, 0);
-console.log(`\n${total || loadErr.length || missing.length ? red(`${total} Verstöße`) : green('Alles im Raster')} ${dim(`· ${comps.length} Komponenten · ${layouts} Layouts`)}`);
+const warnN = comps.reduce((s, c) => s + c.layouts.reduce((t, l) => t + (l.warnings || []).length, 0), 0);
+const accN = comps.reduce((s, c) => s + c.layouts.reduce((t, l) => t + (l.accepted || []).length, 0), 0);
+console.log(`\n${total || loadErr.length || missing.length ? red(`${total} Verstöße`) : green('Alles im Raster')}${warnN ? amber(` · ${warnN} Hinweise`) : ''}${accN ? dim(` · ${accN} Ausnahmen`) : ''} ${dim(`· ${comps.length} Komponenten · ${layouts} Layouts`)}`);
 process.exit(total || loadErr.length || missing.length ? 1 : 0);

@@ -26,7 +26,7 @@ const line = (cond, text) => (cond ? `${text}\n` : '');
 export function renderSystemJS(S) {
   const extra = Object.keys(S).filter(k => !KNOWN.includes(k));
   const rule = r => {
-    const opt = [r.ctl ? `ctl: ${val(r.ctl)}` : '', r.fig ? `fig: ${q(r.fig)}` : ''].filter(Boolean).join(', ');
+    const opt = [r.level ? `level: ${q(r.level)}` : '', r.ctl ? `ctl: ${val(r.ctl)}` : '', r.fig ? `fig: ${q(r.fig)}` : ''].filter(Boolean).join(', ');
     return `    {
       id: ${q(r.id)}, title: ${q(r.title)}, checks: ${val(r.checks)},${opt ? ` ${opt},` : ''}
       text: ${q(r.text)},

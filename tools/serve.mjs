@@ -127,7 +127,7 @@ const server = http.createServer((req, res) => {
     readBody(req).then(b => {
       if (!b || !validId(b.id) || typeof b.tweaks !== 'object') return sendJSON(res, 400, { ok: false });
       writeTweaks(b.id, b.tweaks);
-      history.schedule(`Feinschliff: ${b.id}`);
+      history.schedule(typeof b.reason === 'string' && b.reason ? b.reason.slice(0, 100) : `Feinschliff: ${b.id}`);
       sendJSON(res, 200, { ok: true });
     });
     return;

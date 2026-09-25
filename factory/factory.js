@@ -554,9 +554,24 @@ function measure(c, l, host) {
 
   // Nur zählen, was das aktive Regelwerk als Regel führt (Renderfehler zählen immer)
   const active = new Set(['error', ...S.rules.flatMap(r => r.checks)]);
-  bp.violations = bp.violations.filter(v => active.has(v.rule));
-  bp.ok = bp.violations.length === 0;
+  bp.findings = bp.violations.filter(v => active.has(v.rule));
+  classify(bp);
   return bp;
+}
+
+// Befunde einteilen: Muss-Regel → Verstoß, Soll-Regel → Hinweis, bewusst akzeptiert → Ausnahme (mit Grund)
+const ruleOf = code => S.rules.find(r => r.checks.includes(code));
+const exceptionsOf = (cid, lid) => (F.tw[cid]?.[lid]?.exceptions || []).filter(e => !e.system || e.system === SYS_ID);
+function classify(bp) {
+  const ex = exceptionsOf(bp.c, bp.l);
+  bp.violations = []; bp.warnings = []; bp.accepted = [];
+  for (const v of bp.findings || []) {
+    const r = ruleOf(v.rule);
+    const e = ex.find(x => x.rule === v.rule && x.msg === v.msg);
+    if (e) bp.accepted.push({ ...v, rid: r?.id, reason: e.reason });
+    else (r?.level === 'soll' ? bp.warnings : bp.violations).push({ ...v, rid: r?.id });
+  }
+  bp.ok = bp.violations.length === 0;
 }
 
 function measureAll() {
@@ -575,8 +590,8 @@ const bpOf = (c, l) => F.bps[`${c.id}/${l.id}`];
 // Maßstab ist die Mehrheit: gleicher Textstil in der Kopfzeile (text:kopf), gleicher Abstand zum Inhalt darunter.
 function consistencyPass() {
   const all = Object.values(F.bps);
-  all.forEach(b => { b.violations = b.violations.filter(v => v.rule !== 'consistency'); });
-  if (!S.rules.some(r => r.checks.includes('consistency'))) { all.forEach(b => { b.ok = b.violations.length === 0; }); F.consistency = null; return; }
+  all.forEach(b => { b.findings = (b.findings || []).filter(v => v.rule !== 'consistency'); });
+  if (!S.rules.some(r => r.checks.includes('consistency'))) { all.forEach(classify); F.consistency = null; return; }
   const heads = [];
   for (const b of all) {
     const kopf = b.areas.find(a => a.name === 'text:kopf');
@@ -601,10 +616,10 @@ function consistencyPass() {
   const ms = major('style'), mg = major('gap');
   const msLabel = ms && heads.find(h => h.style === ms.value).label;
   heads.forEach(h => {
-    if (ms && h.style && h.style !== ms.value) h.b.violations.push({ rule: 'consistency', msg: `Kopfzeile in ${h.label}, in den meisten Komponenten ${msLabel}` });
-    if (mg && h.gap != null && h.gap !== mg.value) h.b.violations.push({ rule: 'consistency', msg: `Abstand unter der Kopfzeile ${h.gap} px, in den meisten Komponenten ${mg.value} px` });
+    if (ms && h.style && h.style !== ms.value) h.b.findings.push({ rule: 'consistency', msg: `Kopfzeile in ${h.label}, in den meisten Komponenten ${msLabel}` });
+    if (mg && h.gap != null && h.gap !== mg.value) h.b.findings.push({ rule: 'consistency', msg: `Abstand unter der Kopfzeile ${h.gap} px, in den meisten Komponenten ${mg.value} px` });
   });
-  all.forEach(b => { b.ok = b.violations.length === 0; });
+  all.forEach(classify);
   F.consistency = { style: ms && { label: msLabel, count: ms.count, of: ms.of }, gap: mg, heads: heads.length };
 }
 
@@ -702,12 +717,20 @@ function syncURL() {
 function badgeHTML(bps) {
   const list = Array.isArray(bps) ? bps : [bps];
   const n = list.reduce((s, b) => s + b.violations.length, 0);
+  const w = list.reduce((s, b) => s + (b.warnings?.length || 0), 0);
+  if (!n && w) return `<button class="cf-badge warn" data-act="viol">${w} ${w === 1 ? 'Hinweis' : 'Hinweise'}</button>`;
   return n ? `<button class="cf-badge bad" data-act="viol">${n} ${n === 1 ? 'Verstoß' : 'Verstöße'}</button>`
     : `<span class="cf-badge ok">${icon('check', 14)}Im Raster</span>`;
 }
+// Befunde mit „Als Ausnahme akzeptieren“ bzw. „zurücknehmen“; withLayout zeigt die Layout-id davor
+function findingsItems(bps, withLayout) {
+  const li = (b, v, kind) => `<li class="f-${kind}"><code>${esc(withLayout ? b.l : (v.rid || v.rule))}</code><span class="f-msg">${kind === 'warn' ? '<em>Soll · </em>' : kind === 'acc' ? '<em>Ausnahme · </em>' : ''}${esc(v.msg)}${kind === 'acc' && v.reason ? `<i> – ${esc(v.reason)}</i>` : ''}</span>`
+    + `<button type="button" class="f-act" data-${kind === 'acc' ? 'unaccept' : 'accept'}="1" data-c="${esc(b.c)}" data-l="${esc(b.l)}" data-rule="${esc(v.rule)}" data-msg="${esc(v.msg)}">${kind === 'acc' ? 'zurücknehmen' : 'Als Ausnahme'}</button></li>`;
+  return bps.flatMap(b => [...b.violations.map(v => li(b, v, 'bad')), ...(b.warnings || []).map(v => li(b, v, 'warn')), ...(b.accepted || []).map(v => li(b, v, 'acc'))]).join('');
+}
 function violHTML(bp) {
-  if (!bp.violations.length) return '';
-  return `<ul class="cf-viol">${bp.violations.map(v => `<li><code>${esc(v.rule)}</code>${esc(v.msg)}</li>`).join('')}</ul>`;
+  const items = findingsItems([bp]);
+  return items ? `<ul class="cf-viol">${items}</ul>` : '';
 }
 const pillsHTML = (c, li) => `<div class="cf-pills">${c.layouts.map((x, i) => `<button class="${i === li ? 'on' : ''}" data-li="${i}"><span>${pad2(i + 1)}</span>${esc(x.name)}</button>`).join('')}</div>`;
 
@@ -722,9 +745,10 @@ function emptyHTML() {
 function renderSummary() {
   const all = Object.values(F.bps);
   const n = all.reduce((s, b) => s + b.violations.length, 0);
+  const w = all.reduce((s, b) => s + (b.warnings?.length || 0), 0);
   const el = document.getElementById('cf-sum');
   if (!el) return;
-  el.innerHTML = `<span>${F.components.length} Komponenten · ${all.length} Layouts</span>${n ? `<button class="cf-badge bad" id="cf-sum-bad">${n} ${n === 1 ? 'Verstoß' : 'Verstöße'}</button>` : `<span class="cf-badge ok">${icon('check', 14)}Alle im Raster</span>`}`;
+  el.innerHTML = `<span>${F.components.length} Komponenten · ${all.length} Layouts</span>${n ? `<button class="cf-badge bad" id="cf-sum-bad">${n} ${n === 1 ? 'Verstoß' : 'Verstöße'}</button>` : w ? `<span class="cf-badge warn">${w} ${w === 1 ? 'Hinweis' : 'Hinweise'}</span>` : `<span class="cf-badge ok">${icon('check', 14)}Alle im Raster</span>`}`;
   document.getElementById('cf-sum-bad')?.addEventListener('click', () => {
     const bad = all.find(b => !b.ok);
     state.view = 'layers'; state.c = bad.c; state.solo = false;
@@ -1045,6 +1069,40 @@ function route(keep) {
   syncURL();
 }
 
+/* ---------- Ausnahmen ---------- */
+function saveException(cid, lid, rule, msg, reason, remove) {
+  const t = (F.tw[cid] ||= {});
+  const L = (t[lid] ||= {});
+  L.exceptions = (L.exceptions || []).filter(e => !(e.rule === rule && e.msg === msg && (!e.system || e.system === SYS_ID)));
+  if (!remove) L.exceptions.push({ system: SYS_ID, rule, msg, reason, when: new Date().toISOString().slice(0, 10) });
+  saveTweaks(cid, remove ? `Ausnahme zurückgenommen: ${cid}/${lid}` : `Ausnahme: ${cid}/${lid} – ${reason}`);
+  const c = F.byId[cid], l = c?.layouts.find(x => x.id === lid);
+  if (c && l) F.bps[`${cid}/${lid}`] = measureTemp(c, l);
+  consistencyPass();
+  renderSummary();
+  const y = scrollY;
+  const fig = main.querySelector('.cf-lay-item.is-editing');
+  if (fig?._ed) { remeasure(fig._ed); renderPanel(fig._ed); return; }
+  route(true);
+  scrollTo(0, y);
+  document.getElementById(`row-${cid}`)?.classList.add('show-viol');
+  document.getElementById(`lay-${cid}`)?.classList.add('show-viol');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-accept], [data-unaccept]');
+  if (!b) return;
+  e.preventDefault();
+  const { c, l, rule, msg } = b.dataset;
+  if (b.dataset.unaccept) return saveException(c, l, rule, msg, null, true);
+  const li = b.closest('li');
+  if (li.querySelector('.f-form')) return;
+  li.insertAdjacentHTML('beforeend', `<form class="f-form"><input id="f-why-${Date.now()}" placeholder="Warum ist das hier in Ordnung?" aria-label="Begründung der Ausnahme" required><button type="submit" class="cf-btn is-primary">Akzeptieren</button><button type="button" class="cf-btn" data-a="f-cancel">Abbrechen</button></form>`);
+  const form = li.querySelector('.f-form');
+  form.querySelector('input').focus();
+  form.querySelector('[data-a="f-cancel"]').addEventListener('click', () => form.remove());
+  form.addEventListener('submit', ev => { ev.preventDefault(); const why = form.querySelector('input').value.trim(); if (why) saveException(c, l, rule, msg, why); });
+});
+
 /* ---------- Ansicht: Schichten ---------- */
 function rowHTML(c) {
   const li = selIndex(c), l = c.layouts[li], bp = bpOf(c, l);
@@ -1164,7 +1222,7 @@ function viewLayouts() {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
   <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button>`}</header>
-  <ul class="cf-viol">${bps.flatMap(b => b.violations.map(v => `<li><code>${esc(b.l)}</code>${esc(v.msg)}</li>`)).join('')}</ul>
+  <ul class="cf-viol">${findingsItems(bps, true)}</ul>
   <div class="cf-stressbar" hidden></div>
   <div class="cf-lay-grid">${layGridHTML(c)}</div>
 </section>`;
@@ -1244,7 +1302,7 @@ function ruleFigure(rule, ex) {
 const SYS0 = JSON.stringify(window.SYSTEM);
 const OK0 = { ok: null, total: null };
 let rulesEdit = false;
-const DIFF_NAMES = { spacing: 'Abstandsskala', lineHeightRatios: 'Zeilenhöhen', minTarget: 'Trefferflächen', unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeltexte' };
+const DIFF_NAMES = { spacing: 'Abstandsskala', lineHeightRatios: 'Zeilenhöhen', minTarget: 'Trefferflächen', unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeln (Texte, Stufen)' };
 const getPath = p => p.split('.').reduce((o, k) => o?.[k], S);
 // Platzhalter wie {unit} oder {limits.sizes} in Regeltexten durch die aktuellen Werte ersetzen
 const fillRule = t => String(t).replace(/\{([a-zA-Z.]+)\}/g, (m, p) => { const v = getPath(p); return v == null ? m : Array.isArray(v) ? v.map(x => (x === 'pill' ? 'Pille' : x)).join(', ') : String(v); });
@@ -1355,19 +1413,22 @@ function viewRules(keepScroll) {
     if (!rule.checks.length) state = '<span class="cf-badge rs-soft">Nicht gemessen · Blick von Claude und dir</span>';
     else if (!all.length) state = '';
     else {
-      const bad = all.filter(x => x.bp.violations.some(v => rule.checks.includes(v.rule)));
+      const pool = x => (rule.level === 'soll' ? x.bp.warnings || [] : x.bp.violations);
+      const bad = all.filter(x => pool(x).some(v => rule.checks.includes(v.rule)));
+      const acc = all.reduce((n, x) => n + (x.bp.accepted || []).filter(v => rule.checks.includes(v.rule)).length, 0);
+      const accTag = acc ? `<span class="cf-badge rs-soft">${acc} ${acc === 1 ? 'Ausnahme' : 'Ausnahmen'}</span>` : '';
       state = bad.length
-        ? `<span class="cf-badge bad">${all.length - bad.length}/${all.length} Layouts</span>${bad.map(x => `<button class="rs-bad" data-c="${esc(x.c.id)}" data-li="${x.l.index}">${esc(x.c.name)} · ${esc(x.l.name)}</button>`).join('')}`
-        : `<span class="cf-badge ok">${icon('check', 14)}${all.length}/${all.length} Layouts</span>`;
+        ? `<span class="cf-badge ${rule.level === 'soll' ? 'warn' : 'bad'}">${all.length - bad.length}/${all.length} Layouts</span>${accTag}${bad.map(x => `<button class="rs-bad" data-c="${esc(x.c.id)}" data-li="${x.l.index}">${esc(x.c.name)} · ${esc(x.l.name)}</button>`).join('')}`
+        : `<span class="cf-badge ok">${icon('check', 14)}${all.length}/${all.length} Layouts</span>${accTag}`;
     }
     const edit = rulesEdit;
     return `<article class="rs-rule${edit ? ' is-edit' : ''}" id="regel-${esc(rule.id)}">
       <div class="rs-fig">${all.length ? ruleFigure(rule, ex) : ''}</div>
       <div class="rs-body">
-        <p class="rs-id">${esc(rule.id)} · ${rule.checks.length ? 'gemessen' : 'Gestaltung'}</p>
+        <p class="rs-id">${esc(rule.id)} · ${rule.checks.length ? 'gemessen' : 'Gestaltung'} · <span class="rs-level ${rule.level === 'soll' ? 'is-soll' : 'is-muss'}">${rule.level === 'soll' ? 'Soll' : 'Muss'}</span></p>
         ${edit ? `<input class="rs-title-in" id="rs-title-${esc(rule.id)}" data-rule="${idx}" data-f="title" value="${esc(rule.title)}" aria-label="Titel der Regel">` : `<h2 class="rs-title">${esc(fillRule(rule.title))}</h2>`}
         ${edit ? `<textarea class="rs-text-in" id="rs-text-${esc(rule.id)}" data-rule="${idx}" data-f="text" rows="3" aria-label="Text der Regel">${esc(rule.text)}</textarea>` : `<p class="rs-text">${codeText(fillRule(rule.text))}</p>`}
-        ${edit ? `<div class="rs-ctls">${ruleControls(rule)}</div>` : ''}
+        ${edit ? `<div class="rs-ctls"><div class="rs-ctl"><span>Verbindlichkeit</span>${seg(`lvl:${idx}`, rule.level === 'soll' ? 'soll' : 'muss', [['muss', 'Muss – zählt als Verstoß'], ['soll', 'Soll – nur Hinweis']])}</div>${ruleControls(rule)}</div>` : ''}
         <div class="rs-state">${state}</div>
         ${edit && !rule.checks.length ? `<div class="rs-ruleact">
           ${F.live ? `<button type="button" class="cf-btn" data-a="rule-check" data-rule="${idx}"${draft ? ' disabled title="Erst den Entwurf übernehmen"' : ''}>Prüfung von Claude bauen lassen</button>` : ''}
@@ -1436,6 +1497,11 @@ function viewRules(keepScroll) {
   const rerun = () => { applySystem(); viewRules(true); };
   main.querySelector('[data-a="rules-edit"]').addEventListener('click', () => { rulesEdit = !rulesEdit; viewRules(true); });
   main.querySelectorAll('[data-syscmp]').forEach(b => b.addEventListener('click', () => openSystemsCompare(b.dataset.syscmp)));
+  main.querySelectorAll('[data-seg^="lvl:"]').forEach(b => b.addEventListener('click', () => {
+    const r = S.rules[+b.dataset.seg.slice(4)];
+    if (b.dataset.v === 'soll') r.level = 'soll'; else delete r.level;
+    rerun();
+  }));
   main.querySelectorAll('[data-seg^="sys:"]').forEach(b => b.addEventListener('click', () => {
     const v = b.dataset.v;
     setPath(b.dataset.seg.slice(4), /^\d+$/.test(v) ? +v : v);
@@ -1580,12 +1646,12 @@ function pruneTw(id) {
 }
 
 const saveTimers = {};
-function saveTweaks(id) {
+function saveTweaks(id, reason) {
   pruneTw(id);
   if (!F.live) return;
   clearTimeout(saveTimers[id]);
   saveTimers[id] = setTimeout(() => {
-    fetch('/api/tweaks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, tweaks: F.tw[id] || {} }) }).catch(() => {});
+    fetch('/api/tweaks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, tweaks: F.tw[id] || {}, reason }) }).catch(() => {});
   }, 150);
 }
 
@@ -1656,7 +1722,7 @@ function remeasure(ed) {
   head?.insertAdjacentHTML('beforeend', badgeHTML(bps));
   head?.querySelector(':scope > [data-act="viol"]')?.addEventListener('click', () => sec.classList.toggle('show-viol'));
   const ul = sec?.querySelector(':scope > .cf-viol');
-  if (ul) ul.innerHTML = bps.flatMap(b => b.violations.map(v => `<li><code>${esc(b.l)}</code>${esc(v.msg)}</li>`)).join('');
+  if (ul) ul.innerHTML = findingsItems(bps, true);
 }
 
 function gapRects(ed, p, axis) {
@@ -2054,7 +2120,7 @@ ${tweaks.map(i => `- ${i.label}: ${i.desc}`).join('\n')}
 ` : ''}${notes.length ? `Notizen (Aufträge):
 ${notes.map(i => `- ${i.label.replace('Notiz zu ', '')}: ${i.desc}`).join('\n')}
 ` : ''}${locks.length ? `Gesperrt, nicht verändern: ${locks.map(n => `„${n}“`).join(', ')}.
-` : ''}Danach in components/${ed.c.id}.tweaks.js für das Layout „${ed.l.id}“ alles außer "locks" entfernen (andere Layouts unverändert lassen). Prüfe mit node tools/check.mjs ${ed.c.id}. Das Ergebnis soll so aussehen wie vorher mit Feinschliff, plus die Notizen.`;
+` : ''}Danach in components/${ed.c.id}.tweaks.js für das Layout „${ed.l.id}“ alles außer "locks" und "exceptions" entfernen (andere Layouts unverändert lassen). Prüfe mit node tools/check.mjs ${ed.c.id}. Das Ergebnis soll so aussehen wie vorher mit Feinschliff, plus die Notizen.`;
 }
 
 function askPrompt(ed, wish) {
@@ -2065,7 +2131,7 @@ function askPrompt(ed, wish) {
   const locks = Object.keys(tl.locks || {});
   return `Änderungswunsch aus dem Bearbeiten-Modus: Komponente „${ed.c.name}“ (components/${ed.c.id}.js), Layout „${ed.l.name}“ (id ${ed.l.id})${ed.sel ? `, ausgewählte Fläche „${ed.sel.name}“` : ""}.
 Wunsch: ${wish}
-${tweaks.length ? `Aktueller Feinschliff aus components/${ed.c.id}.tweaks.js (arbeite ihn mit ein und entferne ihn dort danach für dieses Layout, locks bleiben):
+${tweaks.length ? `Aktueller Feinschliff aus components/${ed.c.id}.tweaks.js (arbeite ihn mit ein und entferne ihn dort danach für dieses Layout, locks und exceptions bleiben):
 ${tweaks.map(i => `- ${i.label}: ${i.desc}`).join("\n")}
 ` : ""}${notes.length ? `Offene Notizen, gleich mit erledigen:
 ${notes.map(i => `- ${i.label.replace("Notiz zu ", "")}: ${i.desc}`).join("\n")}
@@ -2082,7 +2148,7 @@ function renderPanel(ed) {
   const locked = a ? !!tl.locks?.[a.name] : false;
   const out = [];
   out.push(`<div class="ed-status">${bp.ok ? `<span class="cf-badge ok">${icon('check', 14)}Im Raster</span>` : `<span class="cf-badge bad">${bp.violations.length} ${bp.violations.length === 1 ? 'Verstoß' : 'Verstöße'}</span>`}<span class="ed-save">${F.live ? `speichert in <code>components/${esc(ed.c.id)}.tweaks.js</code>` : 'ohne Server: gilt bis zum Neuladen'}</span></div>`);
-  if (!bp.ok) out.push(`<ul class="ed-viol">${bp.violations.map(v => `<li><code>${esc(v.rule)}</code>${esc(v.msg)}</li>`).join('')}</ul>`);
+  if (!bp.ok || bp.warnings?.length || bp.accepted?.length) out.push(`<ul class="ed-viol cf-viol-inline">${findingsItems([bp])}</ul>`);
   if (ed.flash) { out.push(`<p class="ed-flash">${esc(ed.flash)}</p>`); ed.flash = null; }
 
   if (!a) {
@@ -2675,7 +2741,7 @@ function writeReport() {
       id: c.id, name: c.name,
       layouts: c.layouts.map(l => {
         const b = bpOf(c, l);
-        return { id: l.id, name: l.name, w: b.w, h: b.h, areas: b.areas.length, type: { sizes: b.type.sizes, weights: b.type.weights, families: b.type.families }, violations: b.violations };
+        return { id: l.id, name: l.name, w: b.w, h: b.h, areas: b.areas.length, type: { sizes: b.type.sizes, weights: b.type.weights, families: b.type.families }, violations: b.violations, warnings: b.warnings || [], accepted: b.accepted || [] };
       }),
     })),
   };
