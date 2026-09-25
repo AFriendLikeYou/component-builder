@@ -169,7 +169,7 @@
 
       /* Heute: der Mond groß am Nachthimmel, darunter Phase und Beleuchtung */
       .mo-h { display: flex; flex-direction: column; gap: 16px; }
-      /* Heller Himmel (ZDS): gedeckter Verlauf statt dunkler Bühne, Sterne als graue Punkte; auf der dunklen Karte der Fabrik ohne Fläche */
+      /* Himmel: auf heller Karte ein gedeckter Verlauf mit grauen Sternen, auf der dunklen Karte ohne Fläche */
       .mo-sky { border-radius: var(--r-8); background: linear-gradient(var(--c-fill-2), var(--c-fill) 64%, var(--c-surface)); }
       &.is-dark .mo-sky { background: none; }
       .mo-now { margin-top: 8px; display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
@@ -195,9 +195,9 @@
       {
         id: 'heute',
         name: 'Heute Nacht',
-        idea: 'Das Bild zuerst: der Mond groß und in seiner echten Phase am Himmel, darunter nur Name, Beleuchtung und der nächste Voll- oder Neumond. In der Fabrik am dunklen Himmel, im ZDS hell mit gedecktem Verlauf.',
+        idea: 'Das Bild zuerst: der Mond groß und in seiner echten Phase am Himmel, darunter nur Name, Beleuchtung und der nächste Voll- oder Neumond.',
         height: 368,
-        dark: S => S.id !== 'zds',
+        dark: true,
         render: (d, h) => {
           // Der Himmel nimmt, was Kopf und Text übrig lassen: 368 − 2 · Inset − 112
           const n = now(d, h), W = h.width - 2 * h.S.inset, H = 256 - 2 * h.S.inset;

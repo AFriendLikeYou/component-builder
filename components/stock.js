@@ -1,6 +1,6 @@
 (() => {
   // Aktie: Kurs, Verlauf und Kennzahlen. Kurse stehen als Zahlen in data und werden erst beim Rendern deutsch formatiert.
-  // Die Farbe folgt der Richtung: im ZDS Grün/Rot aus den Status-Tokens, in der Fabrik fällt sie auf --c-accent/--c-warm zurück.
+  // Die Farbe folgt der Richtung: steigend --c-accent, fallend --c-warm.
   // Die Kartenhöhe ist fest; die Höhe des Charts rechnet sich aus dem Innenabstand des Regelwerks.
   // Zustände (h.state): „loading“ = Skelett in denselben Flächen und Maßen, „empty“ (keine Aktie gewählt) und „error“ = Meldung mit genau einer Handlung.
   // Hover hebt hervor, was man bedienen kann: Name als Link, Zeitraum und Fadenkreuz; die Stile hängen an .is-hover (Vorschau) und :hover.
@@ -171,8 +171,8 @@
     css: `
       /* Richtungsfarben. &.cf-card statt oberster Ebene: [data-c] trägt in der Schichten-Ansicht auch die ganze Zeile. */
       &.cf-card {
-        --ak-up: var(--z-ds-color-background-success, var(--c-accent));
-        --ak-down: var(--z-ds-color-error-70, var(--c-warm));
+        --ak-up: var(--c-accent);
+        --ak-down: var(--c-warm);
       }
       .is-up { --ak-c: var(--ak-up); }
       .is-down { --ak-c: var(--ak-down); }

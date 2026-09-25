@@ -10,7 +10,6 @@
     </div>`;
   const track = d => `<div class="vi-bar"><div class="progress accent vi-track" style="--p: ${d.progress}"><i></i></div></div>`;
   const playtime = d => `<span class="num">${d.elapsed} / ${d.duration}</span>`;
-  const zds = h => h.S.id === 'zds' ? ' is-zds' : '';
 
   Factory.register({
     id: 'video',
@@ -40,7 +39,6 @@
       /* Mittel: Video über die Kartenbreite, darunter Titel und Spielzeit */
       .vi-m { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 168px 48px; gap: 16px; }
       .vi-m .vi-video { border-radius: var(--r-16); }
-      .vi-m.is-zds .vi-video { border-radius: var(--r-8); }
 
       /* Groß: randabfallendes Video, Titel und Fortschritt mit Spielzeit */
       .vi-g { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 240px 24px 48px 16px 32px; height: 100%; }
@@ -50,8 +48,7 @@
       .vi-bar { height: 8px; display: flex; align-items: center; }
       .vi-track { flex: 1; }
 
-      /* Vollbild: das Video füllt die Karte, Titel oben und Steuerung unten liegen auf Verläufen –
-         in der Fabrik dunkel, im ZDS hell und gedeckt aus der Kartenfläche */
+      /* Vollbild: das Video füllt die Karte, Titel oben und Steuerung unten liegen auf Verläufen aus der Kartenfläche */
       .vi-f { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 24px 40px 1fr 48px 24px; height: 100%; }
       .vi-f .vi-video { grid-area: 1 / 1 / -1 / -1; }
       .vi-f .vi-video::after { content: ''; position: absolute; inset: 0; --vi-veil: var(--c-surface); background: linear-gradient(to bottom, color-mix(in srgb, var(--vi-veil) 88%, transparent), color-mix(in srgb, var(--vi-veil) 48%, transparent) 24%, transparent 48%, transparent 52%, color-mix(in srgb, var(--vi-veil) 56%, transparent) 72%, color-mix(in srgb, var(--vi-veil) 88%, transparent)); }
@@ -91,7 +88,7 @@
         idea: 'Das Bild zuerst: Video über die ganze Kartenbreite mit großem Abspielknopf, darunter Titel und Spielzeit.',
         height: 280,
         render: (d, h) => `
-          <div class="vi-m${zds(h)}">
+          <div class="vi-m">
             ${video(h, d, 'lg', 20)}
             <div class="stack" data-area="text:titel">
               <p class="t-16 w-500 clip">${h.esc(d.title)}</p>
@@ -128,7 +125,7 @@
         width: 432,
         height: 240,
         padding: 0,
-        dark: S => S.id !== 'zds', // im ZDS hell: Verläufe aus der Kartenfläche statt dunkler Bühne
+        dark: true,
         render: (d, h) => `
           <div class="vi-f">
             ${video(h, d, 'xl', 28, { bleed: true, line: false })}

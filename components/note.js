@@ -26,7 +26,6 @@
       .no { display: flex; flex-direction: column; gap: 16px; }
       .no-head { display: flex; align-items: baseline; justify-content: space-between; }
       .no-field { background: var(--c-fill); border-radius: var(--r-16); padding: 16px; }
-      .no-field.is-zds { border-radius: var(--r-8); }
       .no-foot { display: flex; }
 
       /* Checkliste */
@@ -51,7 +50,7 @@
               <p class="t-16 w-500">${h.esc(d.title)}</p>
               <p class="t-12 ink-2 num">${h.esc(d.edited)}</p>
             </div>
-            <div class="no-field${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="text:notiz">
+            <div class="no-field" data-area="text:notiz">
               <p class="t-24 serif">${h.esc(d.text)}</p>
             </div>
             <div class="no-foot" data-area="meta:status">${chip(d, h)}</div>
@@ -70,7 +69,7 @@
               <p class="t-16 w-500">${h.esc(d.title)}</p>
               <p class="t-12 ink-2 num">${done} von ${d.checks.length} erledigt</p>
             </div>
-            <div class="no-field no-checks${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="control:checkliste">
+            <div class="no-field no-checks" data-area="control:checkliste">
               ${d.checks.map((c, i) => `
                 <button class="check${c.done ? ' is-done' : ''}" role="checkbox" aria-checked="${c.done}" data-area="control:punkt-${i + 1}">
                   <span class="check-box">${h.icon('check', 14)}</span>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Prüft alle (oder die genannten) Komponenten gegen ein Regelwerk aus systems/<id>/system.js (Standard: fabrik).
-//   node tools/check.mjs --system zds  gegen das ZEIT Design System
+//   node tools/check.mjs --system <id> gegen ein anderes Regelwerk aus systems/
 //   node tools/check.mjs              alle Komponenten
 //   node tools/check.mjs music inbox  nur diese
 //   node tools/check.mjs --json       Rohbericht

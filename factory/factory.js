@@ -207,7 +207,7 @@ function renderInner(c, l) {
   catch (e) { console.error(e); return `<div class="cf-error">${esc(c.id)} / ${esc(l.id)}: ${esc(e.message)}</div>`; }
 }
 function cardHTML(c, l) {
-  // dark: true/false oder eine Funktion des Regelwerks (dark: S => S.id !== 'zds' – im ZDS keine dunklen Karten)
+  // dark: true/false oder eine Funktion des Regelwerks (dark: S => S.id !== 'hell' – je Regelwerk hell oder dunkel)
   const dk = l.dark ?? c.dark;
   const dark = typeof dk === 'function' ? dk(S) : dk;
   const tw = F.tw[c.id]?.[l.id];
@@ -1327,7 +1327,7 @@ Keine neuen Abhängigkeiten außer svelte. Ändere components/${c.id}.js nicht.`
 function figmaPrompt(c) {
   return `Übergabe nach Figma: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
 1. node tools/export.mjs figma ${c.id} --system ${SYS_ID} schreibt export/${SYS_ID}/${c.id}.figma.json.
-2. figma_get_status: welche Datei ist verbunden? Pinne sie mit figma_navigate (lock: true). Nicht in Bibliotheksdateien wie ZDS-Icons oder dem ZDS-Dokument bauen – dann abbrechen und melden.
+2. figma_get_status: welche Datei ist verbunden? Pinne sie mit figma_navigate (lock: true). Nicht in Bibliotheksdateien bauen (etwa Icon- oder Design-System-Libraries) – dann abbrechen und melden.
 3. Führe den Inhalt von tools/figma-builder.js per figma_execute aus (legt globalThis.CF an).
 4. Dann: await CF.buildFromURL('http://localhost:4173/export/${SYS_ID}/${c.id}.figma.json'). Wenn das Plugin nicht laden darf: JSON-Datei lesen und await CF.build(<Inhalt>) aufrufen.
 5. Berichte Seite, Section, Set-ID und die Hinweise aus dem Ergebnis (notes).`;
@@ -1742,7 +1742,7 @@ function ownAdoptPrompt(g) {
     return `Nimm das Icon „${n}“ aus components/${g.c.id}.js in den Icon-Satz auf: ICONS in factory/factory.js (24er viewBox, Linien mit stroke 1.6 wie die übrigen) und die Icon-Liste in CLAUDE.md. Ersetze danach das eigene SVG in der Komponente durch h.icon('${n}', …). Prüfe mit node tools/check.mjs ${g.c.id} --system ${SYS_ID}.`;
   }
   const a = atomById(g.suggest);
-  return `Nimm den Eigenbau ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}) aus components/${g.c.id}.js als Baustein auf. Ergänze in ALLEN Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css) eine Variante eines bestehenden Bausteins${a ? ` (naheliegend: ${a.name} ${a.match})` : ''} oder einen neuen Baustein – mit id, name, match, use, variants und sample wie die übrigen, Farben nur als Tokens, im ZDS-Regelwerk mit den ZDS-Radien und -Abständen. Ergänze die Kurzliste im Abschnitt „Bausteine“ von CLAUDE.md. Stelle danach die Komponente auf den Baustein um und entferne ihr eigenes CSS dafür. Prüfe mit node tools/check.mjs --system fabrik und node tools/check.mjs --system zds.`;
+  return `Nimm den Eigenbau ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}) aus components/${g.c.id}.js als Baustein auf. Ergänze in ALLEN Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css) eine Variante eines bestehenden Bausteins${a ? ` (naheliegend: ${a.name} ${a.match})` : ''} oder einen neuen Baustein – mit id, name, match, use, variants und sample wie die übrigen, Farben nur als Tokens, mit den Radien und Abständen des jeweiligen Regelwerks. Ergänze die Kurzliste im Abschnitt „Bausteine“ von CLAUDE.md. Stelle danach die Komponente auf den Baustein um und entferne ihr eigenes CSS dafür. Prüfe mit node tools/verify.mjs ${g.c.id}.`;
 }
 function atomsHTML(all) {
   const A = S.atoms || [];
@@ -1777,7 +1777,7 @@ function atomsHTML(all) {
       </article>
       <article class="rs-atom rs-atom-icons" id="baustein-icons">
         <div class="rs-atomstage cf-card rs-iconset">${icons.map(n => `<span title="${esc(n)}">${icon(n, 20)}<small>${esc(n)}</small></span>`).join('')}</div>
-        <div class="rs-atombody"><h3 class="rs-atomname">Icons <code>h.icon(name, größe)</code></h3><p class="rs-atomtext">${icons.length} Linien-Icons, 24er Raster, Strich 1,6. In Figma kommen sie im ZDS-Regelwerk aus der Library ZDS-Icons, soweit es dort ein gleiches gibt.</p></div>
+        <div class="rs-atombody"><h3 class="rs-atomname">Icons <code>h.icon(name, größe)</code></h3><p class="rs-atomtext">${icons.length} Linien-Icons, 24er Raster, Strich 1,6. In Figma werden sie ein eigener Icon-Satz; mit einer Icon-Library (opts.icons) kommen gleiche Icons von dort.</p></div>
       </article>
     </div>
     <div class="rs-own" id="eigenbauten">
@@ -1811,7 +1811,7 @@ function atomFormHTML(id) {
   return `<button type="button" class="cf-btn rs-atomedit" data-atomopen="${esc(id)}">${icon(isNew ? 'plus' : 'edit', 14)}${isNew ? 'Baustein beschreiben' : 'Ändern'}</button>
     <form class="rs-atomform" data-atomform="${esc(id)}" hidden>
       ${isNew ? `<input name="name" placeholder="Name, z. B. Eingabefeld" aria-label="Name des Bausteins" required>` : ''}
-      <textarea name="wish" rows="3" required aria-label="Was soll ${isNew ? 'er können' : 'anders sein'}?" placeholder="${isNew ? 'Wofür, welche Varianten, wie sieht er aus?' : 'z. B. „Im ZDS eckig mit 4 px Radius, Höhen 36 und 44“'}"></textarea>
+      <textarea name="wish" rows="3" required aria-label="Was soll ${isNew ? 'er können' : 'anders sein'}?" placeholder="${isNew ? 'Wofür, welche Varianten, wie sieht er aus?' : 'z. B. „eckig mit 4 px Radius, Höhen 36 und 44“'}"></textarea>
       ${sys ? `<div class="rs-atomscope">${seg(`scope:${id}`, 'sys', [['sys', `Nur ${esc(S.name)}`], ['all', 'Alle Regelwerke']])}</div>` : ''}
       <div class="rs-atomgo"><button type="submit" class="cf-btn is-primary">${F.live ? 'Von Claude umsetzen lassen' : 'Anweisung für Claude'}</button></div>
       <div class="b-log ed-log" data-atomlog="${esc(id)}"></div>
@@ -3576,7 +3576,7 @@ F.exportHTML = cid => {
   const c = F.byId[cid];
   if (!c) throw new Error(`Unbekannte Komponente ${cid}`);
   const sysCSS = cssTextOf(h => h.includes(`/systems/${SYS_ID}/system.css`));
-  // Schriften des Regelwerks (z. B. systems/zds/fonts.css) relativ einbinden – Lizenzschriften werden nie kopiert
+  // Schriften des Regelwerks (systems/<id>/fonts.css) relativ einbinden – Lizenzschriften werden nie kopiert
   const fontLinks = [];
   for (const sheet of document.styleSheets) { if (!(sheet.href || '').includes(`/systems/${SYS_ID}/system.css`)) continue; try { for (const r of sheet.cssRules) if (r instanceof CSSImportRule) fontLinks.push(`<link rel="stylesheet" href="../../../systems/${SYS_ID}/${r.href.split('/').pop()}">`); } catch {} }
   const compCSS = [...document.querySelectorAll('style[data-component]')].filter(s => s.dataset.component === cid).map(s => s.textContent).join('\n');

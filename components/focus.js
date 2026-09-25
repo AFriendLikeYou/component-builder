@@ -29,7 +29,7 @@
     id: 'focus',
     name: 'Fokus-Timer',
     aliases: ['focus', 'fokus', 'timer', 'pomodoro', 'konzentration'],
-    dark: S => S.id !== 'zds', // im ZDS hell: leise Striche in --c-fill-2, Rot nur für die Restzeit
+    dark: true,
     data: {
       title: 'Fokus',
       sub: '25-Minuten-Sitzung',

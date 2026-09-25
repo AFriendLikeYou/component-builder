@@ -1,9 +1,0 @@
-/* ZEIT-Schriften. Lizenzschriften: die Dateien in fonts/ sind absichtlich nicht im Repository (.gitignore).
-   Fehlen sie, greifen die Ersatzschriften aus --f-ui / --f-serif. Quelle lokal:
-   Tablet Gothic ~/Downloads/fonts-dieZeit-v1.003-240417/web/, Zeit Tiemann Schmal aus der Designsystem-Doku (apps/docs/static/fonts). */
-@font-face { font-family: 'Tablet Gothic'; src: url('fonts/TabletGothic-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Tablet Gothic'; src: url('fonts/TabletGothic-Oblique.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-@font-face { font-family: 'Tablet Gothic'; src: url('fonts/TabletGothic-Semibold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Tablet Gothic'; src: url('fonts/TabletGothic-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
-/* Zeit Tiemann Schmal hat nur einen Schnitt – als 400 700 deklarieren, sonst fettet der Browser künstlich */
-@font-face { font-family: 'Zeit Tiemann Schmal'; src: url('fonts/ZeitTiemann-Schmal.woff2') format('woff2'); font-weight: 400 700; font-style: normal; font-display: swap; }

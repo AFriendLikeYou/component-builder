@@ -2,7 +2,7 @@
 // Einmal ausführen, dann steht globalThis.CF bereit (überlebt zwischen figma_execute-Aufrufen):
 //   await CF.buildAtoms(bausteine, { icons })   // zuerst: export/<regelwerk>/_bausteine.figma.json → Section „Bausteine · <Regelwerk>“
 //   await CF.build(daten, { page: 'Component Factory', icons: { play: '<component key>' } })
-//   await CF.buildFromURL('http://localhost:4173/export/zds/music.figma.json')   // falls das Plugin fetch darf
+//   await CF.buildFromURL('http://localhost:4173/export/fabrik/music.figma.json')   // falls das Plugin fetch darf
 // daten = Inhalt von export/<regelwerk>/<id>.figma.json (node tools/export.mjs figma <id> --system <id>).
 // Ergebnis: Seite „Component Factory“ → Section je Regelwerk → Component Set je Komponente, Layouts als Varianten.
 // Bausteine (Knöpfe, Umschalter, Chips …) werden in den Karten zu Instanzen der Baustein-Komponenten; Text, Icon,
@@ -48,7 +48,7 @@ globalThis.CF = (() => {
     const all = await figma.variables.getLocalVariablesAsync('COLOR');
     const map = {};
     for (const t of data.tokens) {
-      const vn = t.name.replace(/^--c-/, 'fabrik/').replace(/^--z-ds-color-/, 'zds/').replace(/^--/, '');
+      const vn = t.name.replace(/^--c-/, 'fabrik/').replace(/^--/, '');
       let v = all.find(x => x.variableCollectionId === col.id && x.name === vn);
       if (!v) v = figma.variables.createVariable(vn, col, 'COLOR');
       v.setValueForMode(mode, { ...rgb(t.hex), a: t.a });
@@ -429,7 +429,7 @@ globalThis.CF = (() => {
     const order = id => { const i = (data.atoms || []).findIndex(a => a.id === id); return i < 0 ? 999 : i; };
     for (const x of sec.children) if (x.type === 'COMPONENT_SET' && x.getPluginData('cf-atom') && !sets.includes(x)) sets.push(x);
     sets.sort((p, q) => order(p.getPluginData('cf-atom')) - order(q.getPluginData('cf-atom')) || p.y - q.y);
-    if (iconSet) { iconSet.name = 'Icons'; iconSet.description = `Eigener Icon-Satz der Fabrik (h.icon), je Glyphe und Größe. ${opts.icons ? 'Icons aus der Library ZDS-Icons stehen hier nicht.' : ''}`; sets.push(iconSet); }
+    if (iconSet) { iconSet.name = 'Icons'; iconSet.description = `Eigener Icon-Satz der Fabrik (h.icon), je Glyphe und Größe. ${opts.icons ? 'Icons aus der Library (opts.icons) stehen hier nicht.' : ''}`; sets.push(iconSet); }
     let y = 80;
     for (const set of sets) {
       set.layoutMode = 'HORIZONTAL';

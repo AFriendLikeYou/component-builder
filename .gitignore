@@ -3,6 +3,6 @@ dist/
 media/_media.js
 .DS_Store
 
-# Lizenzschriften der ZEIT – nur lokal, nie ins öffentliche Repository
-systems/zds/fonts
+# Lizenzschriften eines Regelwerks – nur lokal, nie ins öffentliche Repository
+systems/*/fonts
 export/

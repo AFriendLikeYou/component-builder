@@ -82,8 +82,6 @@
       .ft-plane .icon { transform: rotate(45deg); }
       .ft-times > .stack { flex: 1 1 0; min-width: 0; }
       .ft-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 8px 16px; border-radius: var(--r-16); background: var(--c-fill); }
-      /* ZDS erlaubt für Flächen höchstens 8 px Radius */
-      .ft-stats.is-zds { border-radius: var(--r-8); }
 
       /* Karte: randabfallender Kartenausschnitt mit Bogen, darunter Strecke und Ankunft */
       .ft-k { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 208px 24px 40px; height: 100%; }
@@ -158,7 +156,7 @@
                 <div class="stack ft-r"><p class="t-16 w-500 num">${h.esc(d.to.time)}</p><p class="t-12 ink-2 clip">${h.esc(d.to.city)}</p></div>
               </div>
             </div>
-            <div class="ft-stats${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="meta:werte">
+            <div class="ft-stats" data-area="meta:werte">
               ${[['Höhe', d.alt], ['Tempo', d.speed], ['Landung in', `${d.remaining} h`]].map(([k, v]) => `
                 <div class="stack"><p class="t-12 ink-2 clip">${k}</p><p class="t-16 w-500 num clip">${h.esc(v)}</p></div>`).join('')}
             </div>

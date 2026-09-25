@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Übergabe: schreibt Tokens, HTML/CSS und Figma-Daten nach export/<regelwerk>/.
-//   node tools/export.mjs tokens --system zds        Tokens als W3C-Design-Tokens (tokens.json) und CSS-Variablen (tokens.css)
-//   node tools/export.mjs html music --system zds    eigenständige HTML-Seite mit allen Layouts (export/zds/music/music.html)
-//   node tools/export.mjs figma music --system zds   Baum für Figma (export/zds/music.figma.json), gebaut von tools/figma-builder.js
-//   node tools/export.mjs wc music --system zds      Web Component <cf-music> (export/zds/music/music.wc.js + Beispielseite)
-//   node tools/export.mjs all --system zds           alles für alle Komponenten
+//   node tools/export.mjs tokens                     Tokens als W3C-Design-Tokens (tokens.json) und CSS-Variablen (tokens.css)
+//   node tools/export.mjs html music                 eigenständige HTML-Seite mit allen Layouts (export/fabrik/music/music.html)
+//   node tools/export.mjs figma music                Baum für Figma (export/fabrik/music.figma.json), gebaut von tools/figma-builder.js
+//   node tools/export.mjs wc music                   Web Component <cf-music> (export/fabrik/music/music.wc.js + Beispielseite)
+//   node tools/export.mjs all                        alles für alle Komponenten (anderes Regelwerk: --system <id>)
 // Ausgabe am Ende als JSON-Zeile mit den geschriebenen Dateien.
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';

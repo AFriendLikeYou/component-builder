@@ -75,8 +75,6 @@
       .ka-d.has::after { content: ''; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: var(--r-pill); background: var(--c-ink-3); }
 
       .ka-woche { display: flex; flex-direction: column; gap: 8px; height: 72px; padding: 8px 0; border-radius: var(--r-16); background: var(--c-fill); }
-      /* ZDS erlaubt für Flächen höchstens 8 px Radius */
-      .ka-woche.is-zds { border-radius: var(--r-8); }
       .ka-woche .ka-cols { grid-template-columns: repeat(7, 1fr); column-gap: 0; }
 
       /* Termine: der laufende als Block, die übrigen mit Randlinie */
@@ -127,7 +125,7 @@
           return `
           <div class="ka">
             ${head(d, h, ['Vorige Woche', 'Nächste Woche'])}
-            <div class="ka-woche${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="text:woche">
+            <div class="ka-woche" data-area="text:woche">
               <div class="ka-cols ka-wds">
                 ${WD.map((w, k) => `<p class="t-12 w-500 ink-3${week[k].today ? ' is-today' : ''}">${w}</p>`).join('')}
               </div>

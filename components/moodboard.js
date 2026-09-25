@@ -15,7 +15,6 @@ Factory.register({
     .mb-r { display: flex; flex-direction: column; gap: 16px; height: 100%; }
     .mb-grid { flex: 1 1 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 16px; }
     .mb-grid .cf-media { border-radius: var(--r-16); }
-    .mb-grid.is-zds .cf-media { border-radius: var(--r-8); }
 
     .mb-h { display: grid; grid-template-rows: 240px 56px; row-gap: 24px; }
     .mb-h .mb-row { display: flex; gap: 16px; padding: 0 24px; }
@@ -46,7 +45,7 @@ Factory.register({
               <button class="btn-round" aria-label="Referenz hinzufügen">${h.icon('plus', 20)}</button>
             </div>
           </div>
-          <div class="mb-grid${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="media:raster">
+          <div class="mb-grid" data-area="media:raster">
             ${d.refs.map((r, i) => h.media(i, { area: `media:bild-${i + 1}` })).join('')}
           </div>
         </div>`,
@@ -86,7 +85,7 @@ Factory.register({
           <div class="mb-strip" data-area="media:streifen" data-bleed>
             ${d.refs.map((r, i) => h.media(i, { area: `media:bild-${i + 1}`, bleed: true })).join('')}
           </div>
-          <p class="${h.S.id === 'zds' ? 't-18' : 't-14'} serif mb-pad" data-area="text:notiz">${h.esc(d.note)}</p>
+          <p class="t-14 serif mb-pad" data-area="text:notiz">${h.esc(d.note)}</p>
         </div>`,
     },
   ],

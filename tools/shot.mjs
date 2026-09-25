@@ -6,7 +6,7 @@
 //   node tools/shot.mjs --canvas              die ganze Fabrik (Übersicht)
 //   node tools/shot.mjs music --build         Bauen-Ansicht, Endzustand
 //   node tools/shot.mjs music --layouts --state=loading   alle Layouts in einem Zustand (hover, loading, empty, error)
-//   Optionen: --width=2000 --height=900 --scale=2 --web (Web-Bilder statt Platzhalter) --system=zds
+//   Optionen: --width=2000 --height=900 --scale=2 --web (Web-Bilder statt Platzhalter) --system=<id>
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { withPage, pageURL, ROOT } from './_chrome.mjs';
