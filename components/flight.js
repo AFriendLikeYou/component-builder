@@ -7,6 +7,8 @@
   };
   const MAX = 5; // mehr Stationen: vier zeigen, dazu „4 von 12 · Alle anzeigen“
   let uid = 0;
+  // Flugzeug von oben, Nase nach rechts, im Stil von h.icon. „plane“ dort zeigt schräg nach oben und liest sich gedreht schlecht.
+  const jet = size => `<svg class="icon" data-icon="plane-right" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12c0-.6-.5-1-1.2-1H14L9.8 4.5H8.2l2.2 6.5H6.2L4.8 8.8H3.6l.8 3.2-.8 3.2h1.2L6.2 13h4.2l-2.2 6.5h1.6L14 13h5.3c.7 0 1.2-.4 1.2-1Z"/></svg>`;
 
   const head = (d, h) => `
     <div class="row between g-16" data-area="text:kopf">
@@ -20,8 +22,8 @@
     const t = Math.min(1, Math.max(0, d.progress));
     const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
     const Q0 = lerp(P0, C, t), Q1 = lerp(C, P2, t), B = lerp(Q0, Q1, t);
-    // Das Icon zeigt nach rechts oben (−45°), gedreht wird es in Flugrichtung.
-    const ang = Math.atan2(Q1[1] - Q0[1], Q1[0] - Q0[0]) * 180 / Math.PI + 45;
+    // Das Flugzeug zeigt nach rechts und wird in Flugrichtung gedreht (Tangente am Teilungspunkt).
+    const ang = Math.atan2(Q1[1] - Q0[1], Q1[0] - Q0[0]) * 180 / Math.PI;
     const f = n => n.toFixed(1), pt = p => `${f(p[0])} ${f(p[1])}`;
     const id = `ft-p${++uid}`;
     const label = (p, a, side) => `
@@ -37,7 +39,7 @@
       ${label(P0, d.from, -1)}${label(P2, d.to, 1)}
       <g transform="translate(${pt(B)})">
         <circle r="16" class="ft-jet"/>
-        <g transform="rotate(${f(ang)}) translate(-10 -10)">${h.icon('plane', 20)}</g>
+        <g transform="rotate(${f(ang)}) translate(-10 -10)">${jet(20)}</g>
       </g>
     </svg>`;
   }
@@ -78,7 +80,6 @@
       .ft-pin.is-from { left: 0; background: var(--c-accent); }
       .ft-pin.is-to { right: 0; background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-ink-3); }
       .ft-plane { position: absolute; top: 0; left: calc(var(--p) * 100%); width: 24px; height: 24px; margin-left: -12px; display: grid; place-items: center; background: var(--c-surface); color: var(--c-accent); }
-      .ft-plane .icon { transform: rotate(45deg); }
       .ft-times > .stack { flex: 1 1 0; min-width: 0; }
       .ft-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 8px 16px; border-radius: 16px; background: var(--c-fill); }
 
@@ -132,7 +133,7 @@
                 <div class="ft-path" style="--p:${Math.min(1, Math.max(0, d.progress))}">
                   <span class="ft-pin is-from"></span><span class="ft-pin is-to"></span>
                   <span class="ft-done"></span>
-                  <span class="ft-plane">${h.icon('plane', 20)}</span>
+                  <span class="ft-plane">${jet(20)}</span>
                 </div>
                 <p class="t-32 w-500">${h.esc(d.to.code)}</p>
               </div>
