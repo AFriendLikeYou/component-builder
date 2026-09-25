@@ -1,6 +1,8 @@
 // Verlauf über Git: jede Änderung wird ein Commit, „Rückgängig“ ist ein Revert, „Wiederherstellen“ setzt einen alten Stand.
 // Benutzt von tools/serve.mjs. Commits der Fabrik tragen ein Präfix, an dem die Oberfläche die Art erkennt.
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 const CLAUDE_TRAILER = 'Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>';
 const KINDS = [
@@ -30,9 +32,11 @@ export function createHistory(root, { busy = () => false } = {}) {
     return subject;
   }
 
-  // Viele kleine Schreibvorgänge (Feinschliff) zu einem Commit bündeln
+  // Viele kleine Schreibvorgänge (Feinschliff) zu einem Commit bündeln.
+  // Liegt .git/cf-hold, werden Änderungen von außen nicht automatisch committet (z. B. während an der Fabrik selbst gebaut wird).
   function schedule(reason, delay = 2000) {
     if (!enabled) return;
+    if (!reason && existsSync(path.join(root, '.git', 'cf-hold'))) return;
     if (reason) reasons.add(reason);
     clearTimeout(timer);
     timer = setTimeout(() => { if (busy()) return schedule(null, delay); try { commitNow(); } catch (e) { console.error('Verlauf:', e.message); } }, delay);
@@ -40,12 +44,12 @@ export function createHistory(root, { busy = () => false } = {}) {
 
   function list(n = 40) {
     if (!enabled) return [];
-    const raw = git('log', `-n${n}`, '--date=iso-strict', '--name-only', '--pretty=format:%x1e%H%x1f%h%x1f%ad%x1f%s%x1f%b%x1d');
+    const raw = git('log', `-n${n}`, '--date=iso-strict', '--name-only', '--pretty=format:%x1e%H%x1f%h%x1f%ad%x1f%P%x1f%s%x1f%b%x1d');
     const items = raw.split('\x1e').filter(s => s.trim()).map(chunk => {
       const [meta, files = ''] = chunk.split('\x1d');
-      const [sha, short, when, subject, body] = meta.split('\x1f');
+      const [sha, short, when, parents, subject, body] = meta.split('\x1f');
       const kind = (KINDS.find(([p]) => subject.startsWith(p)) || [null, 'extern'])[1];
-      return { sha, short, when, subject, body: body.trim(), kind, files: files.split('\n').map(s => s.trim()).filter(Boolean) };
+      return { sha, short, when, parent: parents.split(' ')[0] || null, subject, body: body.trim(), kind, files: files.split('\n').map(s => s.trim()).filter(Boolean) };
     });
     const reverted = new Set(items.flatMap(i => [...i.body.matchAll(/Macht ([0-9a-f]{40}) rückgängig/g)].map(m => m[1])));
     items.forEach(i => { i.undone = reverted.has(i.sha); });
@@ -79,5 +83,11 @@ export function createHistory(root, { busy = () => false } = {}) {
     return { ok: true, subject: subject || 'Keine Änderung – das ist schon der aktuelle Stand.' };
   }
 
-  return { enabled, commitNow, schedule, list, undo, restore };
+  // Datei so, wie sie in einem Commit war (für Vorher/Nachher)
+  function show(sha, file) {
+    if (!enabled || !/^[0-9a-f]{7,40}$/.test(sha) || file.includes('..')) return null;
+    try { return execFileSync('git', ['show', `${sha}:${file}`], { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; }
+  }
+
+  return { enabled, commitNow, schedule, list, undo, restore, show };
 }

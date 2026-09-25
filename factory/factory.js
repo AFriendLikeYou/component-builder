@@ -632,9 +632,10 @@ async function renderHistory() {
       <span class="hi-kind k-${i.kind}">${KIND_NAME[i.kind] || i.kind}</span>
       <div class="hi-body"><p class="hi-sub">${esc(i.subject.replace(/^(Claude|Feinschliff|Text|Regeln|Rückgängig|Wiederhergestellt): /, ''))}</p>
         <p class="hi-meta">${relTime(i.when)} · ${esc(i.files.slice(0, 2).map(f => f.split('/').pop()).join(', '))}${i.files.length > 2 ? ` +${i.files.length - 2}` : ''}${i.undone ? ' · zurückgenommen' : ''}</p></div>
-      ${n ? `<button type="button" class="ed-mini" data-restore="${i.sha}" title="Stand nach dieser Änderung wiederherstellen">Hierhin zurück</button>` : '<span class="hi-now">aktuell</span>'}
+      <div class="hi-act">${i.parent && compareTargets(i).length ? `<button type="button" class="ed-mini" data-compare="${n}" title="Vorher und nachher nebeneinander">Vergleichen</button>` : ''}${n ? `<button type="button" class="ed-mini" data-restore="${i.sha}" title="Stand nach dieser Änderung wiederherstellen">Hierhin zurück</button>` : '<span class="hi-now">aktuell</span>'}</div>
     </li>`).join('')}</ol>`;
   pop.querySelector('[data-a="undo"]').addEventListener('click', doUndo);
+  pop.querySelectorAll('[data-compare]').forEach(b => b.addEventListener('click', () => { pop.hidden = true; openCompare(items[+b.dataset.compare]); }));
   pop.querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true;
     try {
@@ -646,6 +647,113 @@ async function renderHistory() {
     } catch { toast('Der Server antwortet nicht.', true); }
   }));
 }
+/* ---------- Vorher / Nachher ---------- */
+function compareTargets(item) {
+  const ids = [...new Set(item.files.map(f => f.match(/^components\/([a-z0-9-]+?)(?:\.tweaks)?\.js$/)?.[1]).filter(id => id && id !== '_index'))];
+  const t = ids.map(id => ({ kind: 'c', id, label: F.byId[id]?.name || id }));
+  if (item.files.includes('factory/system.js')) t.push({ kind: 'rules', label: 'Regeln' });
+  return t;
+}
+const atURL = (sha, t) => `/@${sha}/index.html?${t.kind === 'rules' ? 'view=rules' : `view=layouts&c=${encodeURIComponent(t.id)}&solo`}&still&media=none`;
+async function openCompare(item, idx = 0) {
+  document.getElementById('cf-cmp')?.remove();
+  const targets = compareTargets(item);
+  if (!targets.length) return;
+  const t = targets[idx];
+  const m = document.createElement('div');
+  m.id = 'cf-cmp';
+  m.className = 'cmp';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-label', 'Vorher und nachher');
+  m.innerHTML = `<header class="cmp-head">
+      <div class="cmp-title"><b>Vorher / Nachher</b><span>${esc(item.subject)} · ${relTime(item.when)}</span></div>
+      ${targets.length > 1 ? `<div class="ed-seg">${targets.map((x, i) => `<button type="button" data-t="${i}"${i === idx ? ' class="on"' : ''}>${esc(x.label)}</button>`).join('')}</div>` : `<span class="cmp-one">${esc(t.label)}</span>`}
+      <label class="cmp-sync"><input type="checkbox" id="cmp-sync" checked> Gemeinsam scrollen</label>
+      <button type="button" class="cf-btn" data-a="close">${icon('close', 14)}Schließen</button>
+    </header>
+    <div class="cmp-body">
+      <section><p class="cmp-lab">Vorher</p><div class="cmp-frame" data-side="0"></div></section>
+      <section><p class="cmp-lab is-after">Nachher</p><div class="cmp-frame" data-side="1"></div></section>
+    </div>`;
+  document.body.appendChild(m);
+  document.documentElement.classList.add('has-modal');
+  const close = () => { m.remove(); document.documentElement.classList.remove('has-modal'); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  m.querySelector('[data-a="close"]').addEventListener('click', close);
+  m.querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => { close(); openCompare(item, +b.dataset.t); }));
+  const frames = [];
+  const sides = [[item.parent, 0], [item.sha, 1]];
+  for (const [sha, side] of sides) {
+    const box = m.querySelector(`.cmp-frame[data-side="${side}"]`);
+    if (t.kind === 'c') {
+      const exists = await fetch(`/@${sha}/components/${t.id}.js`, { method: 'HEAD' }).then(r => r.ok).catch(() => false);
+      if (!exists) { box.innerHTML = `<p class="cmp-empty">${side ? 'Diese Komponente gibt es in diesem Stand nicht mehr.' : 'Diese Komponente gab es vorher noch nicht.'}</p>`; continue; }
+    }
+    const f = document.createElement('iframe');
+    f.title = side ? 'Nachher' : 'Vorher';
+    f.src = atURL(sha, t);
+    box.appendChild(f);
+    frames.push(f);
+    // Sobald das Dokument im Rahmen steht (nicht erst beim load-Ereignis): Kopfzeile ausblenden, Scrollen koppeln
+    const t0 = Date.now();
+    const prep = () => {
+      const d = f.contentDocument;
+      if (!d || !d.head || f.contentWindow.location.href === 'about:blank') { if (Date.now() - t0 < 15000 && f.isConnected) setTimeout(prep, 40); return; }
+      const st = d.createElement('style');
+      st.textContent = '.cf-top,.rs-draft,.cf-edit{display:none!important}.v-layouts,.v-rules{padding-top:24px!important}';
+      d.head.appendChild(st);
+      f.contentWindow.addEventListener('scroll', () => {
+        if (!m.querySelector('#cmp-sync')?.checked || f._sync) { f._sync = false; return; }
+        frames.filter(o => o !== f).forEach(o => { o._sync = true; o.contentWindow.scrollTo(0, f.contentWindow.scrollY); });
+      });
+    };
+    prep();
+  }
+  if (t.kind === 'c') markChanges(m, frames, t.id);
+}
+
+// Beide Stände vermessen vergleichen: geänderte Layouts markieren, hinscrollen, im Kopf nennen
+function markChanges(m, frames, id) {
+  const sig = b => JSON.stringify({ w: b.w, h: b.h, a: b.areas.map(a => [a.name, a.x, a.y, a.w, a.h]), t: b.texts.map(x => [x.text, x.size, x.weight, x.family]), v: b.violations.length });
+  const t0 = Date.now();
+  const tick = () => {
+    if (!m.isConnected) return;
+    const ready = frames.filter(f => f.contentDocument?.documentElement?.dataset.ready === '1' && f.contentWindow.Factory?.bps);
+    if (ready.length < frames.length) { if (Date.now() - t0 < 20000) setTimeout(tick, 150); return; }
+    const maps = frames.map(f => f.contentWindow.Factory.bps);
+    const keys = [...new Set(maps.flatMap(b => Object.keys(b)).filter(k => k.startsWith(`${id}/`)))];
+    const changed = keys.filter(k => maps.length < 2 || !maps[0][k] || !maps[1][k] || sig(maps[0][k]) !== sig(maps[1][k]));
+    const names = changed.map(k => maps[maps.length - 1][k]?.lname || maps[0][k]?.lname || k.split('/')[1]);
+    const title = m.querySelector('.cmp-title');
+    title.insertAdjacentHTML('beforeend', `<em class="cmp-sum">${changed.length ? `${changed.length} von ${keys.length} Layouts geändert: ${esc(names.join(', '))}` : 'Keine sichtbare Änderung an den Layouts'}</em>`);
+    frames.forEach(f => {
+      const d = f.contentDocument;
+      const st = d.createElement('style');
+      st.textContent = '.cmp-changed{outline:3px solid #2f6fea;outline-offset:6px}.cmp-changed-lab{display:inline-block;margin-left:8px;padding:0 8px;border-radius:999px;background:#e8effd;color:#2556b8;font:500 11px/20px Inter,sans-serif}';
+      d.head.appendChild(st);
+      let first = null;
+      changed.forEach(k => {
+        const [, lid] = k.split('/');
+        const card = d.querySelector(`.cf-card[data-c="${CSS.escape(id)}"][data-l="${CSS.escape(lid)}"]`);
+        if (!card) return;
+        card.classList.add('cmp-changed');
+        card.closest('figure')?.querySelector('figcaption')?.insertAdjacentHTML('beforeend', '<span class="cmp-changed-lab">geändert</span>');
+        first ||= card;
+      });
+      if (first) { f._sync = true; first.scrollIntoView({ block: 'center' }); }
+    });
+  };
+  tick();
+}
+async function compareLatest() {
+  try {
+    const items = (await (await fetch('/api/history', { cache: 'no-store' })).json()).items || [];
+    const it = items.find(i => i.parent && compareTargets(i).length);
+    if (it) openCompare(it);
+  } catch {}
+}
+
 function initHistory() {
   const btn = document.getElementById('cf-hist');
   if (!btn || !F.live?.history) return;
@@ -778,7 +886,8 @@ function viewLayouts() {
   const note = takeNote(state.c);
   if (note?.text && state.c) {
     const sec = document.getElementById(`lay-${state.c}`);
-    sec?.querySelector('.cf-row-head').insertAdjacentHTML('afterend', `<p class="cf-claude-note">Claude: ${esc(note.text)}</p>`);
+    sec?.querySelector('.cf-row-head').insertAdjacentHTML('afterend', `<p class="cf-claude-note">Claude: ${esc(note.text)}${F.live?.history ? ' <button type="button" class="ed-mini" data-a="cmp-latest">Vorher / Nachher</button>' : ''}</p>`);
+    sec?.querySelector('[data-a="cmp-latest"]')?.addEventListener('click', compareLatest);
   }
 }
 
@@ -2041,7 +2150,10 @@ async function runBuild(c, l, instant) {
   const note = takeNote(c.id);
   const finish = () => {
     L.finish(bp.ok ? 'Fertig' : `Fertig · ${bp.violations.length} ${bp.violations.length === 1 ? 'Verstoß' : 'Verstöße'}`, !bp.ok);
-    if (note?.text) L.note(`Claude: ${note.text}`);
+    if (note?.text) {
+      L.note(`Claude: ${note.text}`);
+      if (F.live?.history) { const b = document.createElement('button'); b.type = 'button'; b.className = 'ed-mini b-cmp'; b.textContent = 'Vorher / Nachher'; b.addEventListener('click', compareLatest); document.getElementById('b-log')?.appendChild(b); }
+    }
   };
 
   if (instant) {

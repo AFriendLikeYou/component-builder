@@ -68,6 +68,21 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job, history: history.enabled }));
   }
+  // Zeitreise: /@<commit>/… liefert die Fabrik genau so, wie sie in diesem Commit war (für Vorher/Nachher)
+  const at = url.pathname.match(/^\/@([0-9a-f]{7,40})(\/.*)?$/);
+  if (at) {
+    let file = decodeURIComponent(at[2] || '/').replace(/^\//, '');
+    if (!file || file.endsWith('/')) file += 'index.html';
+    if (file === 'media/_media.js') { res.writeHead(200, { 'Content-Type': TYPES['.js'] }); return res.end(`window.MEDIA = ${JSON.stringify(listMedia())};`); }
+    const buf = history.show(at[1], file);
+    const ext = path.extname(file).toLowerCase();
+    if (!buf) {
+      if (/\.tweaks\.js$/.test(file)) { res.writeHead(200, { 'Content-Type': TYPES['.js'] }); return res.end('/* kein Feinschliff */'); }
+      res.writeHead(404); return res.end('Nicht in diesem Stand');
+    }
+    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600' });
+    return res.end(buf);
+  }
   if (url.pathname === '/api/history') {
     try { history.commitNow(); } catch {}
     return sendJSON(res, 200, { ok: history.enabled, items: history.list(40) });
