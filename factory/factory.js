@@ -3278,6 +3278,7 @@ async function readJob(res) {
 
 // Schickt eine Anfrage an Claude Code (tools/serve.mjs); die Arbeitsschritte erscheinen in `log` und in „Bauen“.
 async function generate(prompt, { log, view = 'build', onStart, figma = false } = {}) {
+  buildRun++; // Bau-Animation in „Bauen“ anhalten, das Protokoll gehört jetzt dem Auftrag
   F.job = { prompt, view, status: 'running', head: 'Claude arbeitet …', steps: [] };
   window.__cfHold = true;
   attachJobLog(log);
@@ -3294,6 +3295,7 @@ async function generate(prompt, { log, view = 'build', onStart, figma = false } 
 // Stapel: mehrere Aufträge (items: [{ prompt, label, lock }]), der Server lässt bis zu drei gleichzeitig laufen
 async function generateBatch(items, { log, view = 'build' } = {}) {
   if (items.length === 1) return generate(items[0].prompt, { log, view });
+  buildRun++;
   F.job = { prompt: `${items.length} Aufträge`, view, status: 'running', head: `${items.length} Aufträge, bis zu drei gleichzeitig`, steps: [], items: items.map(it => ({ label: it.label, status: 'wartet' })) };
   window.__cfHold = true;
   attachJobLog(log);
@@ -3305,6 +3307,8 @@ async function generateBatch(items, { log, view = 'build' } = {}) {
     if (jobRunning()) jobEvent({ type: 'error', text: e.message });
   }
 }
+
+F.generateBatch = generateBatch; // auch für die Konsole und Tests
 
 // Seite neu geladen (oder in einem zweiten Fenster geöffnet), während Claude arbeitet: wieder anhängen
 async function reattachJob(info) {
