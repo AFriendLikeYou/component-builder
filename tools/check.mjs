@@ -3,16 +3,18 @@
 //   node tools/check.mjs              alle Komponenten
 //   node tools/check.mjs music inbox  nur diese
 //   node tools/check.mjs --json       Rohbericht
+//   node tools/check.mjs --stress     zusätzlich Stresstest (lange Wörter, leer, ein Eintrag, zwölf Einträge)
 // Exit-Code 1, wenn es Verstöße gibt.
 import { withPage, pageURL } from './_chrome.mjs';
 
 const args = process.argv.slice(2);
 const only = args.filter(a => !a.startsWith('-'));
 const asJSON = args.includes('--json');
+const stress = args.includes('--stress');
 
 let report, pageErrors = [];
 try {
-  report = await withPage(pageURL('check'), async page => {
+  report = await withPage(pageURL(stress ? 'check&stress' : 'check'), async page => {
     const done = await page.waitFor("document.documentElement.dataset.done === '1'", 30000);
     pageErrors = page.errors;
     return done ? JSON.parse(await page.eval("document.getElementById('cf-report').textContent")) : null;
@@ -53,6 +55,15 @@ for (const c of comps) {
     const meta = `${l.w} × ${l.h} · ${l.areas} Flächen · ${t.sizes.join('/')} px · ${t.weights.join('/')} · ${t.families.map(f => f.replace('Libre ', '')).join(' + ')}`;
     console.log(`  ${l.violations.length ? red('✕') : green('✓')} ${l.name.padEnd(16)} ${dim(meta)}`);
     for (const v of l.violations) console.log(`      ${red(v.rule.padEnd(9))} ${v.msg}`);
+  }
+}
+if (stress) {
+  const st = (report.stress || []).filter(x => !only.length || only.includes(x.c));
+  console.log(`\n${st.length ? red(`Stresstest: ${st.length} Fälle brechen`) : green('Stresstest: alle Fälle halten')}`);
+  for (const x of st) {
+    console.log(`  ${red('✕')} ${x.name} / ${x.lname} ${dim(`· ${x.scenario}`)}`);
+    for (const v of x.violations.slice(0, 3)) console.log(`      ${red(v.rule.padEnd(9))} ${v.msg}`);
+    if (x.violations.length > 3) console.log(dim(`      … ${x.violations.length - 3} weitere`));
   }
 }
 const layouts = comps.reduce((s, c) => s + c.layouts.length, 0);

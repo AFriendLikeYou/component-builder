@@ -8,7 +8,7 @@ export function validSystem(S) {
   const num = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 512;
   return S && num(S.unit) && S.unit > 0 && num(S.inset) && num(S.radius) && num(S.width)
     && Array.isArray(S.innerRadii) && Array.isArray(S.spacing) && Array.isArray(S.typeScale) && S.typeScale.every(num)
-    && num(S.lineHeightStep) && S.lineHeightStep > 0 && S.limits && ['families', 'sizes', 'weights'].every(k => num(S.limits[k]))
+    && (S.minTarget == null || num(S.minTarget)) && num(S.lineHeightStep) && S.lineHeightStep > 0 && S.limits && ['families', 'sizes', 'weights'].every(k => num(S.limits[k]))
     && S.families && typeof S.families === 'object' && Array.isArray(S.areaRoles) && Array.isArray(S.textStyles)
     && Array.isArray(S.rules) && S.rules.every(r => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.text === 'string' && Array.isArray(r.checks));
 }
@@ -27,6 +27,7 @@ window.SYSTEM = {
   width: ${S.width},       // Standardbreite
   innerRadii: ${val(S.innerRadii)}, // erlaubte Radien für Flächen und Medien; 'pill' = Pille oder Kreis
   spacing: ${val(S.spacing)}, // Abstände (gap, Innenabstand)
+  minTarget: ${S.minTarget ?? 32},     // Mindestgröße für Bedienelemente in px (R10)
 
   families: {       // erlaubte Familien und wofür sie da sind
 ${Object.entries(S.families).map(([k, v]) => `    ${q(k)}: ${q(v)},`).join('\n')}

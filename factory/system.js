@@ -11,6 +11,7 @@ window.SYSTEM = {
   width: 352,       // Standardbreite
   innerRadii: [0, 8, 16, 'pill'], // erlaubte Radien für Flächen und Medien; 'pill' = Pille oder Kreis
   spacing: [8, 16, 24, 32, 40, 48], // Abstände (gap, Innenabstand)
+  minTarget: 32,     // Mindestgröße für Bedienelemente in px (R10)
 
   families: {       // erlaubte Familien und wofür sie da sind
     'Inter': 'Oberfläche',
@@ -61,12 +62,12 @@ window.SYSTEM = {
       text: 'Jede inhaltliche Gruppe ist eine Fläche `data-area="rolle:name"` mit Rolle `media`, `text`, `control` oder `meta`. Flächen dürfen verschachtelt sein. Buttons, Icons, Balken und Punkte müssen nicht im Raster liegen, nur die Flächen um sie herum.',
     },
     {
-      id: 'R6', title: 'Kein Überlauf', checks: ['overflow', 'error'],
-      text: 'Der Inhalt passt in die feste `height` des Layouts. Kein Text wird abgeschnitten, außer bewusst mit `.clip`.',
+      id: 'R6', title: 'Kein Überlauf', checks: ['overflow', 'error', 'clip'],
+      text: 'Der Inhalt passt in die feste `height` des Layouts. Kein Text ragt aus der Karte oder wird hart abgeschnitten; bewusst gekürzt wird nur mit `.clip` (Auslassungspunkte) oder Zeilenbegrenzung.',
     },
     {
-      id: 'R7', title: 'Farbe', checks: [],
-      text: 'Nur Tokens aus `factory/system.css` (`--c-*`), eine Akzentfarbe pro Komponente. Flächen bleiben ruhig: Weiß, ein Grau, Schwarz; Farbe nur dort, wo sie etwas bedeutet.',
+      id: 'R7', title: 'Farbe', checks: ['color', 'accent'],
+      text: 'Nur Tokens aus `factory/system.css` (`--c-*`), auch mit Transparenz; Schwarz und Weiß nur transparent für Linien und Schatten. Höchstens eine Akzentfamilie pro Layout (Blau, Warm oder Gelb). Medien und Platzhalter zählen nicht.',
     },
     {
       id: 'R8', title: 'Drei Layouts', checks: [],
@@ -75,6 +76,10 @@ window.SYSTEM = {
     {
       id: 'R9', title: 'Gesperrt bleibt gesperrt', checks: ['lock'],
       text: 'Flächen, die im Bearbeiten-Modus gesperrt wurden, behalten Lage und Größe. Die Sperren stehen in `components/<id>.tweaks.js` unter `locks`.',
+    },
+    {
+      id: 'R10', title: 'Trefferflächen', checks: ['target'],
+      text: 'Buttons und andere Bedienelemente sind mindestens {minTarget} × {minTarget} px groß.',
     },
   ],
 };

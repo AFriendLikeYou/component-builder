@@ -219,6 +219,38 @@ function alpha(col) {
   const a = p.length > 3 ? p[p.length - 1] : '1';
   return a.endsWith('%') ? parseFloat(a) / 100 : parseFloat(a);
 }
+function parseColor(v) {
+  if (!v || v === 'transparent' || v === 'none' || v.startsWith('url')) return null;
+  let m = v.match(/^rgba?\(([^)]+)\)$/), k = 1;
+  if (!m) { m = v.match(/^color\(srgb ([^)]+)\)$/); k = 255; }
+  if (!m) return null;
+  const p = m[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat);
+  return { rgb: p.slice(0, 3).map(x => Math.round(x * k)), a: p.length > 3 ? p[3] : 1 };
+}
+const hexOf = rgb => `#${rgb.map(x => x.toString(16).padStart(2, '0')).join('')}`;
+const ACCENT_FAMILY = { '--c-accent': 'Blau', '--c-accent-soft': 'Blau', '--c-warm': 'Warm', '--c-warm-soft': 'Warm', '--c-highlight': 'Gelb' };
+let PALETTE = null;
+function tokenPalette() {
+  if (PALETTE) return PALETTE;
+  const probe = document.createElement('i');
+  document.body.appendChild(probe);
+  const names = new Set();
+  for (const sheet of document.styleSheets) {
+    let rules; try { rules = sheet.cssRules; } catch { continue; }
+    for (const r of rules) if (r.selectorText === ':root') for (const p of r.style) if (p.startsWith('--c-')) names.add(p);
+  }
+  PALETTE = [...names].map(name => { probe.style.color = `var(${name})`; return { name, ...parseColor(getComputedStyle(probe).color) }; }).filter(t => t.rgb);
+  probe.remove();
+  return PALETTE;
+}
+function matchToken(c) {
+  const d = t => Math.hypot(t.rgb[0] - c.rgb[0], t.rgb[1] - c.rgb[1], t.rgb[2] - c.rgb[2]);
+  const best = tokenPalette().reduce((b, t) => (!b || d(t) < d(b) ? t : b), null);
+  if (best && d(best) <= 3) return best.name;
+  if (c.a < 1 && (c.rgb.every(x => x === 0) || c.rgb.every(x => x === 255))) return 'neutral'; // Schwarz/Weiß mit Transparenz für Linien und Schatten
+  return null;
+}
+
 function radiusOk(r, w, h) {
   if (S.innerRadii.includes(r) || S.innerRadii.some(x => typeof x === 'number' && Math.abs(x - r) <= 0.5)) return true;
   return S.innerRadii.includes('pill') && r >= Math.min(w, h) / 2 - 0.5;
@@ -317,6 +349,11 @@ function measure(c, l, host) {
     const r = rel(el.getBoundingClientRect());
     if (r.w < 1) return;
     bp.controls.push({ ...r, r: Math.min(radiusPx(el, r.w, r.h), r.w / 2, r.h / 2) });
+    const min = S.minTarget || 0;
+    if (min && (r.w < min - .5 || r.h < min - .5)) {
+      const label = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24) || el.tagName.toLowerCase();
+      V('target', `Bedienelement „${label}“ ist ${Math.round(r.w)} × ${Math.round(r.h)} px (mindestens ${min} × ${min})`);
+    }
   });
   card.querySelectorAll('svg').forEach(el => {
     if (el.parentElement.closest('svg') || el.closest('[data-media]') || el.closest('.cf-error')) return;
@@ -344,6 +381,31 @@ function measure(c, l, host) {
     }
   }
 
+  // Farben (R7): nur Tokens (auch mit Transparenz), höchstens eine Akzentfamilie
+  const colors = new Map();
+  const note = (v, where) => { const c = parseColor(v); if (!c || c.a < .02) return; const k = c.rgb.join(); if (!colors.has(k)) colors.set(k, { ...c, where }); };
+  const SHAPES = 'circle, rect, path, polygon, ellipse, text';
+  for (const el of [card, ...card.querySelectorAll('*')]) {
+    if (el.closest('[data-media], .cf-error')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    if (el instanceof SVGElement) {
+      if (el.matches(SHAPES)) note(cs.fill, 'SVG-Fläche');
+      if (el.matches('line, polyline, ' + SHAPES) && cs.stroke !== 'none') note(cs.stroke, 'SVG-Linie');
+      continue;
+    }
+    if ([...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())) note(cs.color, 'Text');
+    note(cs.backgroundColor, 'Fläche');
+    for (const side of ['Top', 'Right', 'Bottom', 'Left']) if (parseFloat(cs[`border${side}Width`]) >= 1 && cs[`border${side}Style`] !== 'none') note(cs[`border${side}Color`], 'Rahmen');
+  }
+  const accentFams = new Set(), offToken = [];
+  bp.colors = [];
+  colors.forEach(c => { const t = matchToken(c); bp.colors.push({ hex: hexOf(c.rgb), a: c.a, where: c.where, token: t }); if (!t) offToken.push(c); else if (ACCENT_FAMILY[t]) accentFams.add(ACCENT_FAMILY[t]); });
+  offToken.slice(0, 4).forEach(c => V('color', `Farbe ${hexOf(c.rgb)}${c.a < 1 ? ` (${Math.round(c.a * 100)} %)` : ''} ist kein Token (${c.where}) – nimm eine --c-*-Farbe`));
+  if (offToken.length > 4) V('color', `… und ${offToken.length - 4} weitere Farben ohne Token`);
+  if (accentFams.size > 1) V('accent', `${accentFams.size} Akzentfarben (${[...accentFams].join(', ')}) – erlaubt ist eine pro Komponente`);
+  bp.accents = [...accentFams];
+
   // Texte
   const byEl = new Map();
   const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
@@ -367,6 +429,22 @@ function measure(c, l, host) {
       for (const n of nodes) { const rg = document.createRange(); rg.selectNodeContents(n); rects.push(...rg.getClientRects()); }
     }
     const eb = el.getBoundingClientRect();
+    if (!svg) {
+      const txt = nodes.map(n => n.nodeValue).join('').trim().slice(0, 28);
+      const intentional = cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none');
+      const hidden = /hidden|clip/.test(cs.overflowX + cs.overflowY);
+      const over = cs.display !== 'inline' && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+      // sichtbarer Teil: durch Eltern mit overflow != visible begrenzt (z. B. .clip) – nur echter Überstand zählt
+      let clipBox = { left: -1e9, right: 1e9, top: -1e9, bottom: 1e9 };
+      for (let p = el; p && p !== card; p = p.parentElement) {
+        const ps = getComputedStyle(p);
+        if (/hidden|clip|auto|scroll/.test(ps.overflowX + ps.overflowY)) { const b = p.getBoundingClientRect(); clipBox = { left: Math.max(clipBox.left, b.left), right: Math.min(clipBox.right, b.right), top: Math.max(clipBox.top, b.top), bottom: Math.min(clipBox.bottom, b.bottom) }; }
+      }
+      const spill = rects.some(r => Math.min(r.right, clipBox.right) > cb.right + .5 || Math.max(r.left, clipBox.left) < cb.left - .5 || Math.min(r.bottom, clipBox.bottom) > cb.bottom + .5);
+      if (spill) V('clip', `Text „${txt}“ ragt aus der Karte`);
+      else if (hidden && over && !intentional) V('clip', `Text „${txt}“ wird hart abgeschnitten – kürzen oder bewusst mit .clip`);
+      if (intentional && over) bp.truncated = (bp.truncated || 0) + 1;
+    }
     rects = rects.map(r => {
       const x1 = Math.max(r.left, eb.left, cb.left), x2 = Math.min(r.right, svg ? r.right : eb.right, cb.right);
       const y1 = Math.max(r.top, cb.top), y2 = Math.min(r.bottom, cb.bottom);
@@ -382,6 +460,7 @@ function measure(c, l, host) {
       italic: cs.fontStyle === 'italic',
       svg,
       custom: el.closest('[data-role]')?.dataset.role || null,
+      area: el.closest('[data-area]')?.dataset.area || null,
       text: nodes.map(n => n.nodeValue).join('').trim().slice(0, 48),
       lines: mergeLines(rects),
     });
@@ -860,22 +939,99 @@ function viewLayers() {
 }
 
 /* ---------- Ansicht: Layouts ---------- */
+function layGridHTML(c, scen) {
+  return c.layouts.map((l, i) => {
+    const sb = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => measureTemp(c, l)) : null;
+    const card = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => cardHTML(c, l)) : cardHTML(c, l);
+    return `<figure class="cf-lay-item" data-c="${esc(c.id)}" data-li="${i}">
+    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
+    <div class="cf-lay-card">${card}</div>
+    ${sb && sb.violations.length ? `<ul class="cf-sviol">${sb.violations.map(v => `<li><code>${esc(v.rule)}</code>${esc(v.msg)}</li>`).join('')}</ul>` : l.idea && !sb ? `<p>${esc(l.idea)}</p>` : ''}
+  </figure>`;
+  }).join('');
+}
+
+/* ---------- Stresstest: dieselben Layouts mit anderen Inhalten ---------- */
+const STRESS = [
+  { id: 'normal', name: 'Normal' },
+  { id: 'lang', name: 'Lange Wörter' },
+  { id: 'leer', name: 'Leer' },
+  { id: 'eins', name: 'Ein Eintrag' },
+  { id: 'viele', name: 'Zwölf Einträge' },
+];
+const LONG_WORDS = ['Bundesausbildungsförderungsgesetz', 'Donaudampfschifffahrtsgesellschaft', 'Grundstücksverkehrsgenehmigung', 'Rindfleischetikettierungsgesetz'];
+const TECH_KEY = /^(tz|id|icon|type|kind|src|href|url|color|accent|code|unit|lat|lon)$/i;
+function stressData(data, kind) {
+  let n = 0;
+  const walk = (v, key) => {
+    if (Array.isArray(v)) {
+      const items = v.map(x => walk(x));
+      if (kind === 'leer') return [];
+      if (kind === 'eins') return items.slice(0, 1);
+      if (kind === 'viele' && items.length) return Array.from({ length: Math.max(12, items.length) }, (_, i) => JSON.parse(JSON.stringify(items[i % items.length])));
+      return items;
+    }
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, k)]));
+    if (kind === 'lang' && typeof v === 'string' && !TECH_KEY.test(key || '') && /[a-zäöüß]{3,}/i.test(v)) return `${v} ${LONG_WORDS[n++ % LONG_WORDS.length]}`;
+    return v;
+  };
+  return walk(JSON.parse(JSON.stringify(data)));
+}
+function withData(c, data, fn) {
+  const keep = c.data;
+  c.data = data;
+  try { return fn(); } finally { c.data = keep; }
+}
+function measureTemp(c, l) {
+  const host = document.createElement('div');
+  host.id = 'cf-measure';
+  document.body.appendChild(host);
+  try { return measure(c, l, host); } finally { host.remove(); }
+}
+function stressResults(c) {
+  return STRESS.filter(x => x.id !== 'normal').map(sc => {
+    const data = stressData(c.data, sc.id);
+    const bps = c.layouts.map(l => withData(c, data, () => measureTemp(c, l)));
+    return { ...sc, bad: bps.filter(b => !b.ok).length, bps };
+  });
+}
+function bindStress(sec, c) {
+  const bar = sec.querySelector('.cf-stressbar');
+  const grid = sec.querySelector('.cf-lay-grid');
+  sec.querySelector('[data-act="stress"]')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!bar.hidden) { bar.hidden = true; btn.classList.remove('on'); grid.innerHTML = layGridHTML(c); bindLayItems(sec); return; }
+    const res = stressResults(c);
+    const total = res.reduce((n, r) => n + r.bad, 0);
+    bar.hidden = false;
+    btn.classList.add('on');
+    bar.innerHTML = `<p class="cf-stress-sum">${total ? `<b>${total} von ${res.length * c.layouts.length}</b> Fällen brechen` : '<b>Alle Fälle</b> halten'} – dieselben Layouts mit anderen Inhalten, gemessen nach denselben Regeln.</p>
+      <div class="ed-seg">${STRESS.map(sc => { const r = res.find(x => x.id === sc.id); return `<button type="button" data-scen="${sc.id}"${sc.id === 'normal' ? ' class="on"' : ''}>${esc(sc.name)}${r ? `<em class="${r.bad ? 'is-bad' : 'is-ok'}">${r.bad ? r.bad : '✓'}</em>` : ''}</button>`; }).join('')}</div>`;
+    bar.querySelectorAll('[data-scen]').forEach(b => b.addEventListener('click', () => {
+      bar.querySelectorAll('[data-scen]').forEach(x => x.classList.toggle('on', x === b));
+      grid.innerHTML = layGridHTML(c, STRESS.find(x => x.id === b.dataset.scen));
+      bindLayItems(sec);
+    }));
+  });
+}
+function bindLayItems(scope) {
+  scope.querySelectorAll('.cf-lay-item .cf-edit').forEach(b => b.addEventListener('click', () => toggleEdit(b.closest('.cf-lay-item'))));
+}
+
 function viewLayouts() {
   const list = state.solo && state.c ? F.components.filter(c => c.id === state.c) : F.components;
   main.innerHTML = `<div class="v-layouts">${errorsHTML()}${list.length ? list.map(c => {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
-  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}</header>
+  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button>`}</header>
   <ul class="cf-viol">${bps.flatMap(b => b.violations.map(v => `<li><code>${esc(b.l)}</code>${esc(v.msg)}</li>`)).join('')}</ul>
-  <div class="cf-lay-grid">${c.layouts.map((l, i) => `<figure class="cf-lay-item" data-c="${esc(c.id)}" data-li="${i}">
-    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${state.solo ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}</figcaption>
-    <div class="cf-lay-card">${cardHTML(c, l)}</div>
-    ${l.idea ? `<p>${esc(l.idea)}</p>` : ''}
-  </figure>`).join('')}</div>
+  <div class="cf-stressbar" hidden></div>
+  <div class="cf-lay-grid">${layGridHTML(c)}</div>
 </section>`;
   }).join('') : emptyHTML()}</div>`;
   main.querySelectorAll('.cf-lay [data-act="viol"]').forEach(b => b.addEventListener('click', () => b.closest('.cf-lay').classList.toggle('show-viol')));
-  main.querySelectorAll('.cf-edit').forEach(b => b.addEventListener('click', () => toggleEdit(b.closest('.cf-lay-item'))));
+  bindLayItems(main);
+  main.querySelectorAll('.cf-lay').forEach(sec => bindStress(sec, F.byId[sec.id.slice(4)]));
   if (state.solo) main.querySelectorAll('.cf-lay').forEach(r => r.classList.add('show-viol'));
   else if (state.c) requestAnimationFrame(() => document.getElementById(`lay-${state.c}`)?.scrollIntoView({ block: 'start' }));
   const ro = takeReopen();
@@ -936,14 +1092,14 @@ function ruleFigure(rule, ex) {
 const SYS0 = JSON.stringify(window.SYSTEM);
 const OK0 = { ok: null, total: null };
 let rulesEdit = false;
-const DIFF_NAMES = { unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeltexte' };
+const DIFF_NAMES = { minTarget: 'Trefferflächen', unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeltexte' };
 const getPath = p => p.split('.').reduce((o, k) => o?.[k], S);
 // Platzhalter wie {unit} oder {limits.sizes} in Regeltexten durch die aktuellen Werte ersetzen
 const fillRule = t => String(t).replace(/\{([a-zA-Z.]+)\}/g, (m, p) => { const v = getPath(p); return v == null ? m : Array.isArray(v) ? v.map(x => (x === 'pill' ? 'Pille' : x)).join(', ') : String(v); });
 const setPath = (p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], S)[last] = v; };
 function systemDiff() {
   const A = JSON.parse(SYS0), out = [];
-  for (const k of ['unit', 'inset', 'radius', 'innerRadii', 'typeScale', 'lineHeightStep']) if (JSON.stringify(A[k]) !== JSON.stringify(S[k])) out.push(k);
+  for (const k of ['unit', 'inset', 'radius', 'innerRadii', 'typeScale', 'lineHeightStep', 'minTarget']) if (JSON.stringify(A[k]) !== JSON.stringify(S[k])) out.push(k);
   for (const k of ['sizes', 'weights', 'families']) if (A.limits[k] !== S.limits[k]) out.push(`limits.${k}`);
   if (JSON.stringify(A.rules) !== JSON.stringify(S.rules)) out.push('rules');
   return out;
@@ -964,6 +1120,7 @@ function ruleControls(rule) {
     case 'R2': return pick('inset', 'Inset', [8, 16, 24, 32, 40], v => `${v} px`);
     case 'R3': return pick('limits.sizes', 'Größen je Layout', [2, 3, 4, 5]) + pick('limits.weights', 'Schnitte je Layout', [1, 2, 3, 4]) + pick('limits.families', 'Familien je Layout', [1, 2, 3])
       + chips('typeScale', 'Schriftskala', [10, 11, 12, 13, 14, 15, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72]) + pick('lineHeightStep', 'Zeilenhöhen', [4, 8], v => `× ${v}`);
+    case 'R10': return pick('minTarget', 'Mindestgröße', [24, 32, 40, 44, 48], v => `${v} px`);
     case 'R4': return pick('radius', 'Kartenradius', [12, 16, 20, 24, 32], v => `${v}`) + chips('innerRadii', 'Innere Radien', [0, 4, 8, 12, 16, 24, 'pill'], v => (v === 'pill' ? 'Pille' : v));
     default: return '';
   }
@@ -2362,6 +2519,9 @@ function writeReport() {
       }),
     })),
   };
+  if (Q.has('stress')) {
+    report.stress = F.components.flatMap(c => stressResults(c).flatMap(r => r.bps.filter(b => !b.ok).map(b => ({ c: c.id, name: c.name, l: b.l, lname: b.lname, scenario: r.name, violations: b.violations }))));
+  }
   const el = document.createElement('script');
   el.type = 'application/json';
   el.id = 'cf-report';
