@@ -1,0 +1,86 @@
+/* Tokens und Bausteine für Komponenten. Komponenten verwenden nur diese Werte. */
+:root {
+  --c-ink: #141414;
+  --c-ink-2: #6e6e73;
+  --c-ink-3: #a1a1a6;
+  --c-line: rgba(0, 0, 0, .08);
+  --c-fill: #f2f2f3;
+  --c-fill-2: #e8e8ea;
+  --c-surface: #ffffff;
+  --c-accent: #2f6fea;
+  --c-accent-soft: #e8effd;
+  --c-warm: #e9a23b;
+  --c-warm-soft: #fbf0dc;
+  --c-highlight: #fbeea4;
+  --c-dark: #1b2029;
+  --c-dark-2: #2a303b;
+  --c-on-dark: #f4f4f5;
+  --c-on-dark-2: #a5abb6;
+
+  --s-8: 8px; --s-16: 16px; --s-24: 24px; --s-32: 32px; --s-40: 40px; --s-48: 48px;
+  --r-8: 8px; --r-16: 16px; --r-pill: 999px;
+
+  --f-ui: 'Inter', system-ui, sans-serif;
+  --f-serif: 'Libre Baskerville', Baskerville, Georgia, serif;
+}
+
+/* Karte (setzt die Fabrik) */
+.cf-card {
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: var(--cf-radius, 24px);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font-family: var(--f-ui);
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 400;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .05), 0 2px 4px rgba(0, 0, 0, .02), 0 16px 32px -8px rgba(0, 0, 0, .06);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.cf-card.is-dark { background: var(--c-dark); color: var(--c-on-dark); }
+:where(.cf-card *) { box-sizing: border-box; margin: 0; padding: 0; }
+:where(.cf-card button) { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* Typo: Größe/Zeilenhöhe. Zeilenhöhen sind Vielfache von 8. */
+.t-12 { font-size: 12px; line-height: 16px; }
+.t-14 { font-size: 14px; line-height: 24px; }
+.t-14.tight { line-height: 16px; }
+.t-16 { font-size: 16px; line-height: 24px; }
+.t-20 { font-size: 20px; line-height: 24px; }
+.t-24 { font-size: 24px; line-height: 32px; }
+.t-32 { font-size: 32px; line-height: 40px; }
+.t-48 { font-size: 48px; line-height: 56px; }
+.t-64 { font-size: 64px; line-height: 64px; }
+.w-400 { font-weight: 400; } .w-500 { font-weight: 500; } .w-600 { font-weight: 600; }
+.serif { font-family: var(--f-serif); font-weight: 400; }
+.ink-2 { color: var(--c-ink-2); } .ink-3 { color: var(--c-ink-3); }
+.is-dark .ink-2 { color: var(--c-on-dark-2); }
+.num { font-variant-numeric: tabular-nums; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Layout-Helfer: Abstände nur in 8er-Schritten */
+.stack { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; }
+.between { justify-content: space-between; }
+.grow { flex: 1 1 0; min-width: 0; }
+.g-8 { gap: 8px; } .g-16 { gap: 16px; } .g-24 { gap: 24px; } .g-32 { gap: 32px; }
+
+/* Medien (von h.media erzeugt) */
+.cf-media { position: relative; overflow: hidden; background-color: var(--c-fill); }
+.cf-media > img, .cf-media > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Bedienelemente */
+.btn-round { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: var(--c-fill); }
+.btn-round.sm { width: 32px; height: 32px; }
+.btn-round.solid { background: var(--c-ink); color: #fff; }
+.is-dark .btn-round { background: var(--c-dark-2); }
+.btn-pill { height: 32px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; background: var(--c-fill); }
+.chip { height: 24px; padding: 0 8px; border-radius: 999px; display: inline-flex; align-items: center; background: var(--c-fill); }
+.icon { display: block; flex: none; }
+
+/* Laufende Zeiger: statischen Winkel per SVG-transform setzen, darin .cf-spin für die Bewegung */
+.cf-spin { transform-box: view-box; transform-origin: 50% 50%; animation: cf-spin var(--dur, 60s) linear infinite; }
+@keyframes cf-spin { to { transform: rotate(360deg); } }

@@ -1,0 +1,12 @@
+{
+  "name": "component-factory",
+  "private": true,
+  "description": "UI-Komponenten nach festen Raster- und Schriftregeln, gebaut mit Claude Code",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "check": "node tools/check.mjs",
+    "shot": "node tools/shot.mjs",
+    "media": "node tools/media.mjs",
+    "artifact": "node tools/artifact.mjs"
+  }
+}

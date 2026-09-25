@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Component Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:ital,wght@0,400;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="factory/system.css">
+<link rel="stylesheet" href="factory/factory.css">
+</head>
+<body>
+<header class="cf-top">
+  <div class="cf-brand"><b>Component Factory</b><span>System v1 · 8 px</span></div>
+  <nav class="cf-tabs" aria-label="Ansicht">
+    <button data-view="build">Bauen</button>
+    <button data-view="layers">Schichten</button>
+    <button data-view="layouts">Layouts</button>
+    <button data-view="canvas">Fabrik</button>
+    <button data-view="rules">Regeln</button>
+  </nav>
+  <div class="cf-right">
+    <div id="cf-sum"></div>
+    <button class="cf-btn" id="cf-media" title="Bildquelle wechseln – oder Bilder/Videos ins Fenster ziehen"></button>
+  </div>
+</header>
+<main id="cf-main"></main>
+<div class="cf-drop" id="cf-drop"><div>Bilder oder Videos ablegen<br><span>Sie füllen alle Medienflächen der Komponenten.</span></div></div>
+<script src="factory/system.js"></script>
+<script src="factory/factory.js"></script>
+<script src="components/_index.js"></script>
+</body>
+</html>
