@@ -23,10 +23,9 @@
       const x = c + Math.cos(t) * 88, y = c + Math.sin(t) * 88;
       labels += CARD[a] != null
         ? label(x, y, CARD[a], a === 0 ? 'var(--c-warm)' : 'currentColor', 500)
-        : label(x, y, a, 'var(--c-on-dark-2)', 400);
+        : label(x, y, a, 'var(--ko-dim)', 400);
     }
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
-      <circle cx="${c}" cy="${c}" r="${c}" fill="var(--c-dark-2)"/>
       ${ticks}${labels}
       <line x1="${c}" y1="2" x2="${c}" y2="26" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
     </svg>`;
@@ -69,7 +68,9 @@
       .ko-dial svg, .ko-tape svg { display: block; }
 
       .ko-rose { display: flex; flex-direction: column; gap: 16px; }
-      .ko-dial { position: relative; width: 256px; height: 256px; align-self: center; border-radius: 999px; }
+      /* Scheibe: hell mit gedecktem Verlauf (ZDS), auf der dunklen Karte der Fabrik eine dunkle Scheibe */
+      .ko-dial { position: relative; width: 256px; height: 256px; align-self: center; border-radius: var(--r-pill); --ko-dim: var(--c-ink-2); background: radial-gradient(closest-side, var(--c-surface) 60%, var(--c-fill) 88%, var(--c-fill-2)); }
+      &.is-dark .ko-dial { --ko-dim: var(--c-on-dark-2); background: var(--c-dark-2); }
       .ko-mid { position: absolute; left: 48px; top: 80px; width: 160px; height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
       .ko-course { display: flex; flex-direction: column; gap: 24px; }
@@ -80,17 +81,19 @@
       .ko-goals { display: flex; flex-direction: column; gap: 16px; }
       .ko-list { display: flex; flex-direction: column; gap: 8px; }
       .ko-item { height: 48px; display: flex; align-items: center; gap: 16px; }
-      .ko-dir { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: var(--c-fill); flex: none; }
+      .ko-dir { width: 40px; height: 40px; border-radius: var(--r-pill); display: grid; place-items: center; background: var(--c-fill); flex: none; }
       .ko-dir .icon { transform: rotate(var(--r)); }
       .ko-item.is-next .ko-dir { background: var(--c-warm); color: var(--c-dark); }
+      /* ZDS: warm ist ZEIT-Rot, darauf steht der Pfeil hell */
+      .ko-goals.is-zds .ko-item.is-next .ko-dir { color: var(--c-surface); }
     `,
     layouts: [
       {
         id: 'rose',
         name: 'Rose',
-        idea: 'Das Instrument zuerst: eine dunkle Rose, die sich mitdreht, der Kurs steht groß in ihrer Mitte.',
+        idea: 'Das Instrument zuerst: eine Rose, die sich mitdreht, der Kurs steht groß in ihrer Mitte. In der Fabrik auf dunkler Karte, im ZDS hell mit gedecktem Verlauf.',
         height: 384,
-        dark: true,
+        dark: S => S.id !== 'zds',
         render: (d, h) => `
           <div class="ko-rose">
             <div class="row between" data-area="text:kopf">
@@ -133,7 +136,7 @@
         idea: 'Wohin von hier: die Ziele als Liste, jeder Pfeil zeigt relativ zum Kurs, das nächste ist warm.',
         height: 304,
         render: (d, h) => `
-          <div class="ko-goals">
+          <div class="ko-goals${h.S.id === 'zds' ? ' is-zds' : ''}">
             <div class="row between" data-area="text:kopf">
               <p class="t-16 w-500">Ziele</p>
               <p class="t-14 ink-2 num">Kurs ${d.heading}° ${SHORT[idx(d.heading)]}</p>
