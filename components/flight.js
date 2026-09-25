@@ -7,8 +7,6 @@
   };
   const MAX = 5; // mehr Stationen: vier zeigen, dazu „4 von 12 · Alle anzeigen“
   let uid = 0;
-  // Flugzeug von oben, Nase nach rechts, im Stil von h.icon. „plane“ dort zeigt schräg nach oben und liest sich gedreht schlecht.
-  const jet = size => `<svg class="icon" data-icon="plane-right" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12c0-.6-.5-1-1.2-1H14L9.8 4.5H8.2l2.2 6.5H6.2L4.8 8.8H3.6l.8 3.2-.8 3.2h1.2L6.2 13h4.2l-2.2 6.5h1.6L14 13h5.3c.7 0 1.2-.4 1.2-1Z"/></svg>`;
 
   const head = (d, h) => `
     <div class="row between g-16" data-area="text:kopf">
@@ -22,7 +20,7 @@
     const t = Math.min(1, Math.max(0, d.progress));
     const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
     const Q0 = lerp(P0, C, t), Q1 = lerp(C, P2, t), B = lerp(Q0, Q1, t);
-    // Das Flugzeug zeigt nach rechts und wird in Flugrichtung gedreht (Tangente am Teilungspunkt).
+    // Das Flugzeug wird in Flugrichtung gedreht (Tangente am Teilungspunkt); „plane“ zeigt von sich aus 45° nach oben.
     const ang = Math.atan2(Q1[1] - Q0[1], Q1[0] - Q0[0]) * 180 / Math.PI;
     const f = n => n.toFixed(1), pt = p => `${f(p[0])} ${f(p[1])}`;
     const id = `ft-p${++uid}`;
@@ -39,7 +37,7 @@
       ${label(P0, d.from, -1)}${label(P2, d.to, 1)}
       <g transform="translate(${pt(B)})">
         <circle r="16" class="ft-jet"/>
-        <g transform="rotate(${f(ang)}) translate(-10 -10)">${jet(20)}</g>
+        <g transform="rotate(${f(ang + 45)}) translate(-10 -10)">${h.icon('plane', 20)}</g>
       </g>
     </svg>`;
   }
@@ -75,13 +73,17 @@
       .ft-route { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; height: 40px; }
       .ft-path { position: relative; height: 24px; }
       .ft-path::before { content: ''; position: absolute; left: 0; right: 0; top: 10px; height: 4px; background: radial-gradient(circle, var(--c-ink-3) 1px, transparent 1.5px) 0 50% / 6px 4px repeat-x; }
-      .ft-done { position: absolute; left: 0; top: 11px; height: 2px; width: calc(var(--p) * 100%); border-radius: 999px; background: var(--c-accent); }
-      .ft-pin { position: absolute; top: 8px; width: 8px; height: 8px; border-radius: 999px; }
+      /* geflogener Teil: Baustein Fortschritt ohne eigene Spur, der Rest bleibt gepunktet */
+      .ft-done { position: absolute; left: 0; right: 0; top: 10px; background: transparent; }
+      .ft-pin { position: absolute; top: 8px; width: 8px; height: 8px; border-radius: var(--r-pill); }
       .ft-pin.is-from { left: 0; background: var(--c-accent); }
       .ft-pin.is-to { right: 0; background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-ink-3); }
       .ft-plane { position: absolute; top: 0; left: calc(var(--p) * 100%); width: 24px; height: 24px; margin-left: -12px; display: grid; place-items: center; background: var(--c-surface); color: var(--c-accent); }
+      .ft-plane .icon { transform: rotate(45deg); }
       .ft-times > .stack { flex: 1 1 0; min-width: 0; }
-      .ft-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 8px 16px; border-radius: 16px; background: var(--c-fill); }
+      .ft-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 8px 16px; border-radius: var(--r-16); background: var(--c-fill); }
+      /* ZDS erlaubt für Flächen höchstens 8 px Radius */
+      .ft-stats.is-zds { border-radius: var(--r-8); }
 
       /* Karte: randabfallender Kartenausschnitt mit Bogen, darunter Strecke und Ankunft */
       .ft-k { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 208px 24px 40px; height: 100%; }
@@ -107,7 +109,7 @@
       .ft-step::before { content: ''; position: absolute; left: 7px; top: 16px; width: 2px; height: 40px; background: var(--c-fill-2); }
       .ft-step.is-done::before { background: var(--c-accent); }
       .ft-step.is-last::before { display: none; }
-      .ft-dot { position: relative; justify-self: center; width: 8px; height: 8px; border-radius: 999px; background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-ink-3); }
+      .ft-dot { position: relative; justify-self: center; width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-ink-3); }
       .is-done .ft-dot { background: var(--c-accent); box-shadow: none; }
       .is-next .ft-dot { width: 12px; height: 12px; background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-accent), 0 0 0 4px var(--c-accent-soft); }
       .is-next .ft-what { color: var(--c-accent); }
@@ -115,7 +117,7 @@
       .ft-more { height: 32px; }
       .ft-link { height: 32px; padding: 0 8px; margin-right: -8px; color: var(--c-accent); }
       .ft-none { height: 192px; align-items: center; justify-content: center; gap: 16px; text-align: center; }
-      .ft-badge { width: 48px; height: 48px; border-radius: 999px; display: grid; place-items: center; background: var(--c-fill); color: var(--c-ink-3); }
+      .ft-badge { width: 48px; height: 48px; border-radius: var(--r-pill); display: grid; place-items: center; background: var(--c-fill); color: var(--c-ink-3); }
 
       /* Strecke · Bildstärker: randabfallendes Foto, Kürzel und Flugzeug darauf, darunter knapp Zeiten und Restzeit */
       .ft-b { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 232px 24px 40px; height: 100%; }
@@ -126,7 +128,7 @@
       .ft-bild .ft-status { align-self: start; justify-self: start; margin: 24px; background: var(--c-surface); }
       .ft-bild .ft-route { align-self: end; margin: 24px; grid-template-columns: minmax(0, auto) minmax(48px, 1fr) minmax(0, auto); color: var(--c-on-dark); }
       .ft-track { position: relative; height: 32px; display: grid; align-items: center; }
-      .ft-bild .ft-plane { width: 32px; height: 32px; margin-left: -16px; border-radius: 999px; box-shadow: 0 4px 12px -4px rgba(0, 0, 0, .4); }
+      .ft-bild .ft-plane { width: 32px; height: 32px; margin-left: -16px; border-radius: var(--r-pill); box-shadow: 0 4px 12px -4px rgba(0, 0, 0, .4); }
       .ft-unter { grid-row: 3; margin: 0 24px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); gap: 16px; }
       .ft-unter > .stack { min-width: 0; }
       .ft-c { text-align: center; min-width: 0; }
@@ -146,8 +148,8 @@
                 <p class="t-32 w-500">${h.esc(d.from.code)}</p>
                 <div class="ft-path" style="--p:${Math.min(1, Math.max(0, d.progress))}">
                   <span class="ft-pin is-from"></span><span class="ft-pin is-to"></span>
-                  <span class="ft-done"></span>
-                  <span class="ft-plane">${jet(20)}</span>
+                  <div class="progress accent ft-done"><i></i></div>
+                  <span class="ft-plane">${h.icon('plane', 20)}</span>
                 </div>
                 <p class="t-32 w-500">${h.esc(d.to.code)}</p>
               </div>
@@ -156,7 +158,7 @@
                 <div class="stack ft-r"><p class="t-16 w-500 num">${h.esc(d.to.time)}</p><p class="t-12 ink-2 clip">${h.esc(d.to.city)}</p></div>
               </div>
             </div>
-            <div class="ft-stats" data-area="meta:werte">
+            <div class="ft-stats${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="meta:werte">
               ${[['Höhe', d.alt], ['Tempo', d.speed], ['Landung in', `${d.remaining} h`]].map(([k, v]) => `
                 <div class="stack"><p class="t-12 ink-2 clip">${k}</p><p class="t-16 w-500 num clip">${h.esc(v)}</p></div>`).join('')}
             </div>
@@ -230,7 +232,7 @@
                 ${more ? `
                 <div class="row between ft-more" data-area="control:alle">
                   <p class="t-12 ink-2">${n} von ${all.length} Stationen</p>
-                  <button class="t-12 w-500 ft-link">Alle anzeigen</button>
+                  <button class="btn-text t-12 w-500 ft-link">Alle anzeigen</button>
                 </div>` : ''}
               </div>
             </div>`;
@@ -257,7 +259,7 @@
                 <p class="t-32 w-500 clip">${h.esc(d.from.code)}</p>
                 <div class="ft-track" style="--p:${p}">
                   <div class="progress on-media"><i></i></div>
-                  <span class="ft-plane">${jet(20)}</span>
+                  <span class="ft-plane">${h.icon('plane', 20)}</span>
                 </div>
                 <p class="t-32 w-500 clip">${h.esc(d.to.code)}</p>
               </div>
