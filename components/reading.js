@@ -49,13 +49,6 @@
       .re-item { height: 48px; display: flex; align-items: center; gap: 16px; }
       .re-item .cf-media { width: 48px; height: 48px; border-radius: 8px; flex: none; }
 
-      /* Liste · Editorialer: Titel in der Akzentschrift vorn, Teaserbild rechts, feine Linien dazwischen */
-      .re-e { display: flex; flex-direction: column; gap: 16px; }
-      .re-e-list { display: flex; flex-direction: column; gap: 24px; }
-      .re-e-item { position: relative; height: 64px; display: flex; gap: 16px; }
-      .re-e-item + .re-e-item::before { content: ''; position: absolute; left: 0; right: 0; top: -12px; height: 1px; background: var(--c-line); }
-      .re-e-item .cf-media { width: 64px; height: 64px; border-radius: 8px; flex: none; }
-
       /* Themen */
       .re-t { display: flex; flex-direction: column; gap: 24px; }
       .re-t .re-head { height: 48px; align-items: flex-start; }
@@ -118,35 +111,6 @@
                 </div>`).join('')}
             </div>
           </div>`,
-      },
-      {
-        id: 'liste-editorialer',
-        name: 'Liste · Editorialer',
-        variantOf: 'liste',
-        direction: 'editorialer',
-        idea: 'Die Titel stehen in der Akzentschrift vorn an der Textkante, das Bild rückt als Teaserbild nach rechts, feine Linien trennen die Artikel. So liest man zuerst die Überschrift statt des Vorschaubilds, und die Liste wirkt wie eine ruhige Zeitungsspalte.',
-        height: 424,
-        render: (d, h) => {
-          // Titel in der Überschriftenschrift; hat das Regelwerk dafür eine Mindestgröße (ZDS: 18 px), den nächsten Grad darüber
-          const hl = h.S.headline?.min > 16 ? 't-20' : 't-16';
-          return `
-          <div class="re-e">
-            <div class="re-head" data-area="text:kopf">
-              <p class="re-title"><span class="t-16 w-500">${h.esc(d.title)}</span><span class="t-12 ink-2 num">${d.articles.length} Artikel · ${d.articles.reduce((s, a) => s + left(a), 0)} Min.</span></p>
-              <button class="btn-pill re-edit t-12 ink-2" data-area="control:themen">${h.icon('edit', 16)}<span>Themen</span></button>
-            </div>
-            <div class="re-e-list" data-area="text:liste">
-              ${d.articles.map((a, i) => `
-                <div class="re-e-item" data-area="text:artikel-${i + 1}">
-                  <div class="stack grow">
-                    <p class="t-12 ink-2 clip">${kicker(a, h)}</p>
-                    <p class="${hl} serif re-two" data-role="Titel">${h.esc(a.title)}</p>
-                  </div>
-                  ${h.media(i)}
-                </div>`).join('')}
-            </div>
-          </div>`;
-        },
       },
       {
         id: 'themen',
