@@ -2080,6 +2080,7 @@ function wirkungHTML() {
       ${kpi(fb.length ? `${kept} von ${fb.length}` : '–', 'Varianten behalten', fb.length ? pct(kept, fb.length) : '')}
       ${kpi(mins(dur), 'Dauer je Auftrag', measured.length ? `Median · ${cost.toFixed(2).replace('.', ',')} $ insgesamt` : '')}
     </div>
+    ${kontextVergleich(measured)}
     <div class="wk-chartbox">
       <p class="wk-legend"><span><i class="is-clean"></i>ohne Verstoß</span><span><i class="is-bad"></i>mit Verstößen</span><span><i class="is-hand"></i>Handarbeit danach</span><span><i class="is-undone"></i>zurückgenommen</span><span><i class="is-mark"></i>Regel geändert</span></p>
       ${wirkungChart(jobs, marks)}
@@ -2099,6 +2100,16 @@ function wirkungHTML() {
         <td class="num">${j.kosten == null ? '–' : `${j.kosten.toFixed(2).replace('.', ',')} $`}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
+}
+// Mit oder ohne Kontextpaket: dieselben Kennzahlen je Gruppe, sobald es beide gibt
+function kontextVergleich(measured) {
+  const g = { ja: measured.filter(j => j.w?.kontext === 'ja'), nein: measured.filter(j => j.w?.kontext === 'nein') };
+  if (!g.ja.length || !g.nein.length) return '';
+  const row = (label, xs) => {
+    const m = f => median(xs.map(f).filter(Number.isFinite));
+    return `<tr><td>${label}</td><td class="num">${xs.length}</td><td class="num">${m(j => +j.w.schritte)}</td><td class="num">${m(j => +j.w.gelesen)}</td><td class="num">${m(j => +j.w.abgelehnt)}</td><td class="num">${m(j => j.dauer)} s</td><td class="num">${(m(j => j.kosten) ?? 0).toFixed(2).replace('.', ',')} $</td><td class="num">${xs.filter(j => j.first === 0).length} von ${xs.length}</td></tr>`;
+  };
+  return `<div class="wk-tablebox wk-compare"><table class="wk-table"><thead><tr><th>Kontextpaket</th><th class="num">Aufträge</th><th class="num">Schritte</th><th class="num">davon Lesen</th><th class="num">abgelehnt</th><th class="num">Dauer</th><th class="num">Kosten</th><th class="num">erster Wurf ohne Verstoß</th></tr></thead><tbody>${row('mitgeschickt', g.ja)}${row('ohne', g.nein)}</tbody></table><p class="rs-pnsmall">Mediane je Auftrag. Aussagekräftig erst bei ähnlichen Aufträgen in beiden Gruppen.</p></div>`;
 }
 async function loadWirkung() {
   if (!F.live || F.wirkung) return;

@@ -761,3 +761,4 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 .wk-table tr.is-undone td { color: var(--ink-3); }
 @media (max-width: 1080px) { .wk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .wk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.wk-compare { margin-top: 16px; }

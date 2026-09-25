@@ -64,11 +64,13 @@ const writeLeitsaetze = list => { fs.mkdirSync(path.dirname(LS_FILE), { recursiv
 // Git ist der Speicher, die Zahlen reisen mit dem Verlauf (auch auf GitHub), und Rückgängig löscht sie nicht.
 // pruefungen = Ergebnisse der gezielten Prüfläufe nach dem ersten Schreiben, je „Verstöße:Hinweise“.
 function jobMetrics(info, ev, system) {
-  let wrote = false, steps = 0;
+  let wrote = false, steps = 0, reads = 0, denied = 0;
   const checks = [];
   info.events.forEach((e, i) => {
+    if (e.type === 'detail' && e.text === 'abgelehnt') denied++;
     if (e.type !== 'step') return;
     steps++;
+    if (/^(file\.read|rules\.read|files\.find|files\.search|shell)\(/.test(e.code)) reads++;
     if (/^component\.(write|edit)\(/.test(e.code)) wrote = true;
     const m = e.code.match(/^rules\.check\((?:"([^"]*)")?\)/);
     if (!m || !wrote || !m[1] || m[1].startsWith('--')) return; // nur Prüfungen einer Komponente, nach dem ersten Schreiben
@@ -76,7 +78,7 @@ function jobMetrics(info, ev, system) {
     const v = /^im Raster/.test(d) ? 0 : +((d.match(/^(\d+) Verstöße/) || [])[1] ?? NaN);
     if (Number.isFinite(v)) checks.push(`${v}:${+((d.match(/(\d+) Hinweise/) || [])[1] || 0)}`);
   });
-  const kv = { dauer: Math.round((Date.now() - info.started) / 1000), kosten: ev.cost != null ? (+ev.cost).toFixed(2) : '-', schritte: steps, pruefungen: checks.join(',') || '-', komponente: ev.id || '-', regelwerk: system, ansicht: info.view };
+  const kv = { dauer: Math.round((Date.now() - info.started) / 1000), kosten: ev.cost != null ? (+ev.cost).toFixed(2) : '-', schritte: steps, gelesen: reads, abgelehnt: denied, kontext: info.context ? 'ja' : 'nein', pruefungen: checks.join(',') || '-', komponente: ev.id || '-', regelwerk: system, ansicht: info.view };
   return `Wirkung: ${Object.entries(kv).map(([k, v]) => `${k}=${v}`).join(' ')}`;
 }
 const parseWirkung = body => { const m = (body || '').match(/^Wirkung: (.+)$/m); return m ? Object.fromEntries(m[1].split(' ').map(p => p.split('='))) : null; };
@@ -161,18 +163,18 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
     req.on('end', () => {
-      let prompt = '', system = 'fabrik', figma = false, view = 'build';
-      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; if (/^[a-z]+$/.test(j.view || '')) view = j.view; } catch {}
+      let prompt = '', system = 'fabrik', figma = false, view = 'build', context = process.env.CF_CONTEXT === '1';
+      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; if (/^[a-z]+$/.test(j.view || '')) view = j.view; if (typeof j.context === 'boolean') context = j.context; } catch {}
       if (!prompt) { res.writeHead(400); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
-      const info = jobInfo = { prompt, view, started: Date.now(), events: [], subs: new Set() };
+      const info = jobInfo = { prompt, view, context, started: Date.now(), events: [], subs: new Set() };
       const send = ev => {
         info.events.push(ev);
         const line = JSON.stringify(ev) + '\n';
         for (const r of [res, ...info.subs]) { try { r.write(line); } catch {} }
       };
       console.log(`→ Claude: ${prompt}`);
-      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, onEvent: send });
+      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, context, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
         try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true, body: jobMetrics(info, ev, system), only: Array.isArray(ev.files) ? ev.files : null }); } catch (e) { console.error('Verlauf:', e.message); }

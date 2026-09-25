@@ -2,6 +2,7 @@
 // in kurze Arbeitsschritte für die Anzeige („Denkt nach …“) in der Fabrik.
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const BIN = process.env.CLAUDE_BIN || 'claude';
 let available = null;
@@ -64,9 +65,33 @@ function detailFor(kind, text, isError) {
   return null;
 }
 
+// Kontextpaket: was Claude sonst zu Beginn zusammensucht, gleich mitschicken – Regelwerk (Werte, Regeln, Bausteine,
+// CSS), bestätigte Leitsätze, die letzten Entscheidungen und die Komponenten, um die es im Auftrag geht (Quelltext
+// und Feinschliff). Claude muss diese Dateien dann nicht erneut lesen.
+export function buildContext(root, system, prompt) {
+  const read = p => { try { return fs.readFileSync(path.join(root, p), 'utf8'); } catch { return null; } };
+  const block = (p, lang) => { const t = read(p); return t == null ? '' : `### ${p}\n\`\`\`${lang}\n${t.trim()}\n\`\`\`\n`; };
+  // Komponenten im Auftrag: per Pfad (components/<id>.js) oder per Name („Musik“)
+  const ids = new Set([...prompt.matchAll(/components\/([a-z0-9-]+)\.js/g)].map(m => m[1]).filter(id => id !== '_index'));
+  for (const file of fs.readdirSync(path.join(root, 'components')).filter(n => /^[a-z0-9-]+\.js$/.test(n) && n !== '_index.js' && !n.endsWith('.tweaks.js'))) {
+    const src = read(`components/${file}`) || '';
+    const name = (src.match(/\bname:\s*'([^']+)'/) || [])[1];
+    // als eigenes Wort (Buchstaben davor oder danach zählen nicht), ab 4 Zeichen, damit kurze Namen nicht zufällig treffen
+    if (name && name.length >= 4 && new RegExp(`(?<!\\p{L})${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\p{L})`, 'u').test(prompt)) ids.add(file.slice(0, -3));
+  }
+  let ls = '';
+  try { const m = (read('feedback/leitsaetze.js') || '').match(/=\s*(\[[\s\S]*\]);?\s*$/); ls = JSON.parse(m[1]).filter(x => x.status === 'bestaetigt').map(x => `- ${x.id}: ${x.text}`).join('\n'); } catch {}
+  let pref = '';
+  try { const m = (read('feedback/praeferenzen.js') || '').match(/=\s*(\[[\s\S]*\]);/); pref = JSON.parse(m[1]).slice(-8).map(e => `- ${e.c}/${e.l} ${e.decision}${e.comment ? `: „${e.comment}“` : ''}`).join('\n'); } catch {}
+  const list = fs.readdirSync(path.join(root, 'components')).filter(n => /^[a-z0-9-]+\.js$/.test(n) && n !== '_index.js' && !n.endsWith('.tweaks.js')).map(n => n.slice(0, -3));
+  return `# Kontext (aktueller Stand – diese Dateien musst du nicht noch einmal lesen)
+Komponenten im Projekt: ${list.join(', ')}.
+${block(`systems/${system}/system.js`, 'js')}${block(`systems/${system}/system.css`, 'css')}${ls ? `### Bestätigte Leitsätze (wie Soll-Regeln)\n${ls}\n` : ''}${pref ? `### Letzte Entscheidungen zu Varianten\n${pref}\n` : ''}${[...ids].map(id => block(`components/${id}.js`, 'js') + block(`components/${id}.tweaks.js`, 'js')).join('')}`;
+}
+
 // onEvent({type:'step', code}) · ({type:'detail', text}) ; done → {type:'done', id, text, cost} | {type:'error', text}
-export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma = false, onEvent }) {
-  const sys = `${SYSTEM}\nAktives Regelwerk: systems/${system}/system.js (Werte, Regeln) und systems/${system}/system.css (Tokens, Typo-Klassen). Prüfe mit node tools/check.mjs <id> --system ${system}, Screenshots mit node tools/shot.mjs <id> --layouts --system=${system}.`;
+export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma = false, context = false, onEvent }) {
+  const sys = `${context ? `${buildContext(root, system, prompt)}\n` : ''}${SYSTEM}\nAktives Regelwerk: systems/${system}/system.js (Werte, Regeln) und systems/${system}/system.css (Tokens, Typo-Klassen). Prüfe mit node tools/check.mjs <id> --system ${system}, Screenshots mit node tools/shot.mjs <id> --layouts --system=${system}.`;
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     '--allowedTools', ...TOOLS, ...(figma ? FIGMA_TOOLS : []), '--append-system-prompt', sys];
   if (model) args.push('--model', model);
