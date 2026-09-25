@@ -1763,12 +1763,16 @@ function atomsHTML(all) {
         <h3 class="rs-atomname">${esc(a.name)} <code>${esc(a.match)}</code></h3>
         <p class="rs-atomtext">${codeText(a.use || '')}</p>
         <p class="rs-atommeta">${e ? `${e.n}× in ${e.layouts.size} Layouts · ${[...e.comps].sort((p, q) => q[1] - p[1]).map(([n, k]) => `${esc(n)} ${k}`).join(' · ')}` : 'noch nicht verwendet'}${a.control !== false && sizes[a.id]?.size ? ` · Höhen ${[...sizes[a.id]].sort((p, q) => p - q).join(' · ')} px` : ''}</p>
+        ${atomFormHTML(a.id)}
       </div>
     </article>`;
   };
   const icons = Object.keys(ICONS);
   return `<p class="rs-pn">${A.length} Bausteine in <code>${SYS_CSS}</code>, beschrieben unter <code>atoms</code> in <code>${SYS_JS}</code>. Claude baut Bedienelemente nur daraus; Farbe und Abstand darf eine Komponente anpassen, Form und Höhe nicht. Die Regel ${esc((S.rules.find(r => r.checks.includes('atoms')) || {}).id || '')} misst das.</p>
     <div class="rs-atoms">${A.map(card).join('')}
+      <article class="rs-atom rs-atom-new" id="baustein-neu">
+        <div class="rs-atombody"><h3 class="rs-atomname">Neuer Baustein</h3><p class="rs-atomtext">Ein Element, das es hier noch nicht gibt – etwa ein Eingabefeld, ein Segment-Schalter oder ein Tag mit Schließen. Claude legt es an; nur fürs aktive Regelwerk bekommen die übrigen eine schlichte Fassung derselben Klasse, damit alle Komponenten überall funktionieren.</p>${atomFormHTML('neu')}</div>
+      </article>
       <article class="rs-atom rs-atom-icons" id="baustein-icons">
         <div class="rs-atomstage cf-card rs-iconset">${icons.map(n => `<span title="${esc(n)}">${icon(n, 20)}<small>${esc(n)}</small></span>`).join('')}</div>
         <div class="rs-atombody"><h3 class="rs-atomname">Icons <code>h.icon(name, größe)</code></h3><p class="rs-atomtext">${icons.length} Linien-Icons, 24er Raster, Strich 1,6. In Figma kommen sie im ZDS-Regelwerk aus der Library ZDS-Icons, soweit es dort ein gleiches gibt.</p></div>
@@ -1798,7 +1802,48 @@ function atomsHTML(all) {
       }).join('')}</ul>` : ''}
     </div>`;
 }
+// „Ändern“ und „Neuer Baustein“: Wunsch beschreiben, Geltung wählen, Claude setzt es in system.js und system.css um
+function atomFormHTML(id) {
+  const isNew = id === 'neu';
+  const sys = (window.CF_SYSTEMS || []).length > 1;
+  return `<button type="button" class="cf-btn rs-atomedit" data-atomopen="${esc(id)}">${icon(isNew ? 'plus' : 'edit', 14)}${isNew ? 'Baustein beschreiben' : 'Ändern'}</button>
+    <form class="rs-atomform" data-atomform="${esc(id)}" hidden>
+      ${isNew ? `<input name="name" placeholder="Name, z. B. Eingabefeld" aria-label="Name des Bausteins" required>` : ''}
+      <textarea name="wish" rows="3" required aria-label="Was soll ${isNew ? 'er können' : 'anders sein'}?" placeholder="${isNew ? 'Wofür, welche Varianten, wie sieht er aus?' : 'z. B. „Im ZDS eckig mit 4 px Radius, Höhen 36 und 44“'}"></textarea>
+      ${sys ? `<div class="rs-atomscope">${seg(`scope:${id}`, 'sys', [['sys', `Nur ${esc(S.name)}`], ['all', 'Alle Regelwerke']])}</div>` : ''}
+      <div class="rs-atomgo"><button type="submit" class="cf-btn is-primary">${F.live ? 'Von Claude umsetzen lassen' : 'Anweisung für Claude'}</button></div>
+      <div class="b-log ed-log" data-atomlog="${esc(id)}"></div>
+    </form>`;
+}
+function atomChangePrompt(a, wish, scope) {
+  const where = scope === 'all' ? 'in allen Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css)' : `nur im Regelwerk ${S.name} (${SYS_JS} unter atoms, CSS in ${SYS_CSS})`;
+  return `Ändere den Baustein „${a.name}“ (${a.match}) ${where}: ${wish}
+Die Klasse ${a.match} und die Namen ihrer Varianten sind der gemeinsame Name, den die Komponenten benutzen; Form, Größen und Aussehen legt jedes Regelwerk selbst fest. Neue Varianten in atoms mit Namen und im sample eintragen, CSS nur mit Tokens des Regelwerks.${scope !== 'all' ? ' Gibt es eine neue Variante nur hier, bekommen die übrigen Regelwerke dieselbe Klasse als schlichte Fassung, damit Komponenten überall funktionieren.' : ''}
+Ändert sich eine Höhe oder Breite, prüfe die Komponenten, die den Baustein benutzen (node tools/check.mjs --system ${SYS_ID}${scope === 'all' ? ' und jedes andere Regelwerk' : ''}), und gleiche Layouts an, die dadurch brechen. Ändere die Komponenten sonst nicht.`;
+}
+function atomNewPrompt(name, wish, scope) {
+  return `Neuer Baustein „${name}“: ${wish}
+Lege ihn ${scope === 'all' ? 'in allen Regelwerken' : `im Regelwerk ${S.name} (${SYS_JS}, ${SYS_CSS})`} an: Eintrag unter atoms (id, name, match, use, variants, sample wie die übrigen; control: false, wenn man ihn nicht bedient) und CSS in system.css, Farben nur als Tokens.${scope !== 'all' ? ' Die übrigen Regelwerke bekommen dieselbe Klasse als schlichte Fassung, damit Komponenten überall funktionieren.' : ''} Setze ihn noch in keiner Komponente ein. Prüfe mit node tools/check.mjs --system ${SYS_ID}.`;
+}
 function bindAtoms(all) {
+  main.querySelectorAll('[data-atomopen]').forEach(b => b.addEventListener('click', () => {
+    const form = main.querySelector(`[data-atomform="${b.dataset.atomopen}"]`);
+    form.hidden = !form.hidden;
+    b.classList.toggle('on', !form.hidden);
+    if (!form.hidden) form.querySelector('input, textarea').focus();
+  }));
+  main.querySelectorAll('.rs-atomform [data-seg]').forEach(b => b.addEventListener('click', () => b.closest('.rs-atomscope').querySelectorAll('[data-seg]').forEach(x => x.classList.toggle('on', x === b))));
+  main.querySelectorAll('[data-atomform]').forEach(form => form.addEventListener('submit', ev => {
+    ev.preventDefault();
+    const id = form.dataset.atomform, wish = form.querySelector('[name="wish"]').value.trim();
+    const scope = form.querySelector('[data-seg].on')?.dataset.v || 'sys';
+    if (!wish) return;
+    const prompt = id === 'neu' ? atomNewPrompt(form.querySelector('[name="name"]').value.trim() || 'Neuer Baustein', wish, scope) : atomChangePrompt(atomById(id), wish, scope);
+    const log = form.querySelector('[data-atomlog]');
+    if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
+    form.querySelectorAll('button, input, textarea').forEach(x => { x.disabled = true; });
+    generate(prompt, { log, view: 'rules' });
+  }));
   const groups = ownGroups(all);
   main.querySelectorAll('.rs-ownstage').forEach(st => {
     const el = st.firstElementChild, w = +st.dataset.w, h = +st.dataset.h;
@@ -3488,6 +3533,9 @@ function figmaNode(el, cb) {
     grow: parseFloat(cs.flexGrow) > 0,
     alignSelf: cs.alignSelf,
   };
+  // Baustein? Dann baut Figma daraus eine Instanz der Baustein-Komponente (CF.buildAtoms)
+  const atom = el instanceof SVGElement ? null : atomOf(el);
+  if (atom) { base.atom = atom.id; base.vars = Object.keys(atom.variants || {}).filter(v => el.classList.contains(v)); }
   if (el instanceof SVGSVGElement) {
     const clone = el.cloneNode(true);
     const color = cs.color;
@@ -3526,10 +3574,14 @@ function figmaNode(el, cb) {
     const txt = { ...base, type: 'text', ...figmaRuns(el), align: cs.textAlign, truncate: cs.textOverflow === 'ellipsis', clamp: cs.webkitLineClamp && cs.webkitLineClamp !== 'none' ? +cs.webkitLineClamp : null, nowrap: cs.whiteSpace === 'nowrap' };
     // Text mit eigener Fläche (Chip, Button-Beschriftung): Rahmen mit Text darin
     if (frame.fill || frame.stroke || frame.pad.some(Boolean) || frame.radius.some(Boolean)) {
-      const inner = { ...txt, name: 'Text', area: null, x: base.x + frame.pad[3], y: base.y + frame.pad[0], w: r2(base.w - frame.pad[1] - frame.pad[3]), h: r2(base.h - frame.pad[0] - frame.pad[2]), abs: false, grow: false };
+      const inner = { ...txt, atom: undefined, vars: undefined, name: 'Text', area: null, x: base.x + frame.pad[3], y: base.y + frame.pad[0], w: r2(base.w - frame.pad[1] - frame.pad[3]), h: r2(base.h - frame.pad[0] - frame.pad[2]), abs: false, grow: false };
       return { ...frame, layout: { dir: 'H', gap: 0, justify: cs.justifyContent === 'normal' ? (cs.textAlign === 'center' ? 'center' : 'flex-start') : cs.justifyContent, align: 'center', wrap: false }, children: [inner] };
     }
     return txt;
+  }
+  // Grid mit einem zentrierten Kind (runde Knöpfe, Häkchen): in Figma Auto-Layout mittig
+  if (/grid/.test(cs.display) && elemKids.length === 1 && !hasText && /center/.test(cs.justifyItems + cs.placeItems) && /center/.test(cs.alignItems + cs.placeItems)) {
+    frame.layout = { dir: 'H', gap: 0, crossGap: 0, justify: 'center', align: 'center', wrap: false, reverse: false };
   }
   if (/flex/.test(cs.display)) {
     const dir = cs.flexDirection.startsWith('column') ? 'V' : 'H';
@@ -3569,6 +3621,46 @@ F.exportFigma = cid => {
       return { id: l.id, name: l.name, idea: l.idea || '', w: tree.w, h: tree.h, family: l.family || null, variantOf: l.variantOf || null, ok: bp?.ok ?? null, tree };
     });
     return { system: SYS_ID, systemName: S.name, component: { id: c.id, name: c.name }, tokens: F.exportTokens().colors, layouts, created: new Date().toISOString() };
+  } finally { host.remove(); }
+};
+
+// Bausteine und Icons für Figma: jede Variante einzeln, dazu alle Kombinationen, die Komponenten wirklich nutzen
+F.exportFigmaAtoms = () => {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:0;top:0;';
+  document.body.appendChild(host);
+  try {
+    const combos = new Map(), icons = new Map();
+    const noteIcon = svg => { const n = svg.dataset.icon; if (!n || !ICONS[n]) return; const z = Math.round(svg.getBoundingClientRect().width); if (z) icons.set(`${n}|${z}`, { name: n, size: z }); };
+    for (const c of F.components) for (const l of c.layouts) {
+      host.innerHTML = cardHTML(c, l);
+      host.querySelectorAll('svg.icon').forEach(noteIcon);
+      for (const a of S.atoms || []) host.querySelectorAll(a.match).forEach(el => {
+        const vars = Object.keys(a.variants || {}).filter(v => el.classList.contains(v));
+        if (vars.length > 1) combos.set(`${a.id}|${vars.join(' ')}`, vars);
+      });
+    }
+    const atoms = (S.atoms || []).map(a => {
+      const sets = [[], ...Object.keys(a.variants || {}).map(v => [v]), ...[...combos].filter(([k]) => k.startsWith(`${a.id}|`)).map(([, v]) => v)];
+      return {
+        id: a.id, name: a.name, match: a.match, use: a.use || '',
+        sets: sets.map(vars => {
+          host.innerHTML = `<div class="cf-card" style="width:352px;padding:24px">${atomSample(a, vars.join(' '))}</div>`;
+          const el = host.firstElementChild.firstElementChild;
+          el.querySelectorAll('svg.icon').forEach(noteIcon);
+          const tree = figmaNode(el, el.getBoundingClientRect());
+          return { vars, label: vars.length ? vars.map(v => a.variants[v]).join(' + ') : 'Standard', tree };
+        }).filter(x => x.tree),
+      };
+    });
+    host.innerHTML = '<div class="cf-card"></div>';
+    const ink = figmaColor(getComputedStyle(host.firstElementChild).color);
+    const rgb = `rgb(${parseInt(ink.hex.slice(1, 3), 16)}, ${parseInt(ink.hex.slice(3, 5), 16)}, ${parseInt(ink.hex.slice(5, 7), 16)})`;
+    return {
+      system: SYS_ID, systemName: S.name, tokens: F.exportTokens().colors, ink, atoms,
+      icons: [...icons.values()].sort((p, q) => p.name.localeCompare(q.name) || p.size - q.size).map(i => ({ ...i, svg: icon(i.name, i.size).replace(/currentColor/g, rgb) })),
+      created: new Date().toISOString(),
+    };
   } finally { host.remove(); }
 };
 
