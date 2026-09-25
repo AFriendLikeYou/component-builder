@@ -160,7 +160,8 @@
       .mo-edge { fill: none; stroke: var(--c-line); }
       &.is-dark .mo-edge { stroke: none; }
       .mo-glow { stop-color: var(--c-highlight); }
-      .mo-star { fill: var(--c-on-dark); }
+      .mo-star { fill: var(--c-ink-3); }
+      &.is-dark .mo-star { fill: var(--c-on-dark); }
       .mo-ring { fill: none; stroke: var(--c-ink); stroke-width: 1.5; }
 
       .mo-head > * { min-width: 0; }
@@ -168,7 +169,9 @@
 
       /* Heute: der Mond groß am Nachthimmel, darunter Phase und Beleuchtung */
       .mo-h { display: flex; flex-direction: column; gap: 16px; }
-      .mo-sky { height: 208px; }
+      /* Heller Himmel (ZDS): gedeckter Verlauf statt dunkler Bühne, Sterne als graue Punkte; auf der dunklen Karte der Fabrik ohne Fläche */
+      .mo-sky { border-radius: var(--r-8); background: linear-gradient(var(--c-fill-2), var(--c-fill) 64%, var(--c-surface)); }
+      &.is-dark .mo-sky { background: none; }
       .mo-now { margin-top: 8px; display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
       .mo-now > p { max-width: 100%; }
 
@@ -192,15 +195,16 @@
       {
         id: 'heute',
         name: 'Heute Nacht',
-        idea: 'Das Bild zuerst: der Mond groß und in seiner echten Phase am dunklen Himmel, darunter nur Name, Beleuchtung und der nächste Voll- oder Neumond.',
+        idea: 'Das Bild zuerst: der Mond groß und in seiner echten Phase am Himmel, darunter nur Name, Beleuchtung und der nächste Voll- oder Neumond. In der Fabrik am dunklen Himmel, im ZDS hell mit gedecktem Verlauf.',
         height: 368,
-        dark: true,
+        dark: S => S.id !== 'zds',
         render: (d, h) => {
-          const n = now(d, h), W = h.width - 2 * h.S.inset;
+          // Der Himmel nimmt, was Kopf und Text übrig lassen: 368 − 2 · Inset − 112
+          const n = now(d, h), W = h.width - 2 * h.S.inset, H = 256 - 2 * h.S.inset;
           return `
           <div class="mo-h">
             ${head(h, d.title, h.esc(d.place))}
-            <div class="mo-sky" data-area="media:mond" role="img" aria-label="${n.name}, ${n.pct} % beleuchtet">${sky(n.m, W, 208)}</div>
+            <div class="mo-sky" style="height: ${H}px" data-area="media:mond" role="img" aria-label="${n.name}, ${n.pct} % beleuchtet">${sky(n.m, W, H)}</div>
             <div class="mo-now" data-area="text:phase">
               <p class="t-20 w-500 clip">${n.name}</p>
               <p class="t-14 ink-2 clip">${n.pct}&nbsp;% beleuchtet · ${PHASES[n.goal.q]} ${rel(n.goal.days)}</p>
