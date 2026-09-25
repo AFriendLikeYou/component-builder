@@ -18,12 +18,15 @@ Das startet die Seite mit Live-Reload und verbindet die Eingabezeile mit deinem 
 - **Bauen**: Komponente eintippen. Ein bekannter Name spielt den Aufbau ab: Raster, Flächen, Struktur, fertige Komponente, danach eine Kamerafahrt über die Schichten. Alles andere geht als Anfrage an Claude Code, etwa „Baue eine Komponente Flug mit drei Layouts“ oder „Mach das Kompakt-Layout von Musik luftiger“. Die Arbeitsschritte laufen live im Log mit. „Endlos“ spielt alle Layouts nacheinander ab, gut für Bildschirmaufnahmen (⌘⇧5).
 - **Schichten**: jede Komponente als Reihe aus Original, Pixel, Abstand & Flächen, Struktur und Schriften. Die Schichten erzeugt die Seite aus der gemessenen Komponente, niemand zeichnet sie von Hand.
 - **Layouts**: die drei Layouts pro Komponente. **Bearbeiten** öffnet den Feinschliff wie Auto-Layout: Fläche anklicken und rechts unten im Panel Größe (Hug / Füllen / Fest), Richtung, Verteilung, Abstand und Innenabstand einstellen; ziehen sortiert um, pinke Balken ändern den Abstand, Doppelklick ändert Text, Textstile nur aus der Liste (was eine Grenze reißen würde, ist gesperrt). Alles wird sofort in `components/<id>.tweaks.js` gespeichert und mitgeprüft. **Sperren** schützt eine Fläche vor Änderungen (R9), **Notiz** und **Claude fragen** geben Claude Aufträge, **In den Code einarbeiten** lässt Claude den Feinschliff sauber in die Komponente übernehmen.
+- **Stresstest** (Knopf im Kopf jeder Komponente in „Layouts“): dieselben Layouts mit langen Wörtern, leeren Listen, einem und zwölf Einträgen – gemessen nach denselben Regeln. Für Claude: `node tools/check.mjs --stress`.
 - **Fabrik**: alle Layouts auf einer Fläche, mit Kamerafahrt. Ziehen verschiebt, ⌘ + Scrollen zoomt.
 - **Regeln**: alle Gestaltungsregeln mit Beispielen und wie viele Layouts sie erfüllen, dazu Schriftskala, Textstile, Farben, Abstände, Radien. **Regeln anpassen** macht Werte und Texte editierbar: Jede Änderung misst sofort alle Layouts neu und zeigt, was brechen würde. **Übernehmen** speichert in `factory/system.js`, **Verwerfen** stellt den alten Stand her. Für neue, noch nicht gemessene Regeln baut Claude auf Knopfdruck eine Prüfung; Verstöße lässt du von Claude beheben.
 
 ## Verlauf
 
-Jede Änderung wird automatisch gespeichert, egal ob sie von dir, vom Feinschliff oder von Claude kommt. Der Ordner ist dafür ein Git-Repository. Oben rechts unter **Verlauf** siehst du alle Änderungen. **Rückgängig** oder ⌘Z nimmt die letzte zurück, **Hierhin zurück** stellt einen früheren Stand komplett wieder her. Auch das Zurücknehmen lässt sich wieder zurücknehmen.
+Jede Änderung wird automatisch gespeichert, egal ob sie von dir, vom Feinschliff oder von Claude kommt. Der Ordner ist dafür ein Git-Repository. Oben rechts unter **Verlauf** siehst du alle Änderungen. **Rückgängig** oder ⌘Z nimmt die letzte zurück, **Hierhin zurück** stellt einen früheren Stand komplett wieder her. Auch das Zurücknehmen lässt sich wieder zurücknehmen. **Vergleichen** zeigt vorher und nachher nebeneinander, markiert die geänderten Layouts und scrollt dorthin – nach einer Claude-Änderung auch direkt über „Vorher / Nachher“.
+
+Der Stand liegt auf GitHub: https://github.com/AFriendLikeYou/component-builder (`git push` im Ordner lädt neue Änderungen hoch).
 
 ## Eigene Bilder
 

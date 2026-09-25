@@ -539,3 +539,10 @@ button.cf-badge.bad:hover { background: #f7d6d1; }
 .cf-sviol { width: 0; min-width: 100%; list-style: none; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--bad-soft); color: #8f2a22; font-size: 11px; line-height: 16px; }
 .cf-sviol li + li { margin-top: 4px; }
 .cf-sviol code { margin-right: 6px; font: 500 10px/16px var(--mono); }
+
+/* Einheitlichkeit */
+.rs-cons { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.rs-cons p { margin: 0; display: grid; grid-template-columns: 112px 1fr; column-gap: 12px; row-gap: 2px; }
+.rs-cons span { grid-row: span 2; font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.rs-cons b { font-size: 14px; line-height: 20px; font-weight: 500; }
+.rs-cons em { font-style: normal; font: 10px/16px var(--mono); color: var(--ink-3); }

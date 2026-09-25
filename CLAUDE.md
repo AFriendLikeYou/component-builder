@@ -10,9 +10,11 @@ Hier entstehen UI-Komponenten nach festen Regeln. Die Fabrik (`index.html`) verm
 
 1. Datei `components/<id>.js` anlegen. Vorlagen: `components/music.js` (Bild, Steuerung, Liste, randabfallendes Cover) und `components/worldclock.js` (SVG-Grafik, Tabelle).
 2. Die id in `components/_index.js` eintragen, falls sie dort noch fehlt.
-3. `node tools/check.mjs <id>` so lange laufen lassen und korrigieren, bis alles ✓ ist.
+3. `node tools/check.mjs <id>` so lange laufen lassen und korrigieren, bis alles ✓ ist. Danach `node tools/check.mjs <id> --stress`: lange Wörter, leere Listen, ein und zwölf Einträge. Leere Listen brauchen einen leeren Zustand, lange Listen eine Begrenzung („4 von 12 · Alle anzeigen“), lange Wörter `.clip` oder Umbruch.
 4. `node tools/shot.mjs <id> --layouts` und `node tools/shot.mjs <id> <layout-id>` erzeugen PNGs in `shots/`. **Sieh sie dir an** (Read-Tool) und prüfe die Optik: abgeschnittener Text, gedrängte oder leere Stellen, klare Hierarchie, gleiche Bildsprache wie die übrigen Komponenten. Grün heißt nur „regelkonform“, nicht „gut“.
 5. Kurz berichten: welche Layouts, was jedes zuerst zeigt, was die Prüfung sagt.
+
+Die Kopfzeile einer Karte ist immer die Fläche `text:kopf`; ihr erster Text ist der Kartentitel. R11 vergleicht Stil und Abstand darunter über alle Komponenten.
 
 Höhe vorher ausrechnen: `24 + Flächen + Abstände + 24 = height`. Beispiele für einzeilige Texte: `.t-12` = 16 hoch, `.t-14`/`.t-16` = 24, `.t-20` = 24, `.t-32` = 40, `.t-48` = 56, `.t-64` = 64. `.t-14.tight` = 16 für zweizeilige Listeneinträge (14 + 12 → 32).
 Am verlässlichsten sind `display: grid` oder `flex` mit festen Größen und `gap` in 8er-Schritten.

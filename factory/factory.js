@@ -526,8 +526,45 @@ function measureAll() {
   F.bps = {};
   for (const c of F.components) for (const l of c.layouts) F.bps[`${c.id}/${l.id}`] = measure(c, l, host);
   host.remove();
+  consistencyPass();
 }
 const bpOf = (c, l) => F.bps[`${c.id}/${l.id}`];
+
+/* ---------- Einheitlichkeit über alle Komponenten (R11) ---------- */
+// Maßstab ist die Mehrheit: gleicher Textstil in der Kopfzeile (text:kopf), gleicher Abstand zum Inhalt darunter.
+function consistencyPass() {
+  const all = Object.values(F.bps);
+  all.forEach(b => { b.violations = b.violations.filter(v => v.rule !== 'consistency'); });
+  const heads = [];
+  for (const b of all) {
+    const kopf = b.areas.find(a => a.name === 'text:kopf');
+    if (!kopf) continue;
+    const title = b.texts.find(t => t.area === 'text:kopf');
+    const inside = a => a.x >= kopf.x - .5 && a.y >= kopf.y - .5 && a.x + a.w <= kopf.x + kopf.w + .5 && a.y + a.h <= kopf.y + kopf.h + .5;
+    const below = b.areas.filter(a => a !== kopf && !inside(a) && a.y >= kopf.y + kopf.h - .5 && a.x < kopf.x + kopf.w && a.x + a.w > kopf.x).sort((p, q) => p.y - q.y)[0];
+    heads.push({
+      b,
+      style: title ? `${title.family}|${title.size}|${title.weight}` : null,
+      label: title ? `${shortFam(title.family)} ${title.size} · ${title.weight}` : null,
+      gap: below ? r1(below.y - (kopf.y + kopf.h)) : null,
+    });
+  }
+  const major = key => {
+    const m = new Map();
+    heads.forEach(h => { if (h[key] != null) m.set(h[key], (m.get(h[key]) || 0) + 1); });
+    const n = heads.filter(h => h[key] != null).length;
+    const best = [...m].sort((a, b) => b[1] - a[1])[0];
+    return best && best[1] >= 3 && best[1] > n / 2 ? { value: best[0], count: best[1], of: n } : null;
+  };
+  const ms = major('style'), mg = major('gap');
+  const msLabel = ms && heads.find(h => h.style === ms.value).label;
+  heads.forEach(h => {
+    if (ms && h.style && h.style !== ms.value) h.b.violations.push({ rule: 'consistency', msg: `Kopfzeile in ${h.label}, in den meisten Komponenten ${msLabel}` });
+    if (mg && h.gap != null && h.gap !== mg.value) h.b.violations.push({ rule: 'consistency', msg: `Abstand unter der Kopfzeile ${h.gap} px, in den meisten Komponenten ${mg.value} px` });
+  });
+  all.forEach(b => { b.ok = b.violations.length === 0; });
+  F.consistency = { style: ms && { label: msLabel, count: ms.count, of: ms.of }, gap: mg, heads: heads.length };
+}
 
 /* ---------- Schichten ---------- */
 let UID = 0;
@@ -1081,6 +1118,10 @@ function ruleFigure(rule, ex) {
     case 'R5': return mini(`<div class="cf-shell cf-layer" style="width:${bp.w}px;height:${bp.h}px">${areaRects(bp)}</div>`, bp.w, bp.h, .64);
     case 'R6': return mini(layerCard('structure', bp), bp.w, bp.h, .64);
     case 'R7': return `<div class="rs-dots">${colorTokens().slice(0, 12).map(t => `<i style="background:${t.value}" title="${esc(t.name)}"></i>`).join('')}</div>`;
+    case 'R11': {
+      const k = F.consistency || {};
+      return `<div class="rs-cons"><p><span>Kopfzeile</span><b>${k.style ? esc(k.style.label) : 'keine klare Mehrheit'}</b>${k.style ? `<em>${k.style.count} von ${k.style.of} Layouts</em>` : ''}</p><p><span>Abstand darunter</span><b>${k.gap ? `${k.gap.value} px` : 'keine klare Mehrheit'}</b>${k.gap ? `<em>${k.gap.count} von ${k.gap.of} Layouts</em>` : ''}</p></div>`;
+    }
     case 'R8': return `<div class="rs-three">${c.layouts.slice(0, 3).map(x => mini(cardHTML(c, x), x.width, bpOf(c, x).h, .22)).join('')}</div>`;
     default: return `<span class="rs-none">${esc(rule.id)}</span>`;
   }
@@ -1488,6 +1529,7 @@ function remeasure(ed) {
   document.body.appendChild(host);
   F.bps[`${ed.c.id}/${ed.l.id}`] = measure(ed.c, ed.l, host);
   host.remove();
+  consistencyPass();
   renderSummary();
   const sec = document.getElementById(`lay-${ed.c.id}`);
   const head = sec?.querySelector(':scope > .cf-row-head');
