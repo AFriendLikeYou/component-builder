@@ -4,7 +4,11 @@ Hier entstehen UI-Komponenten nach festen Regeln. Die Fabrik (`index.html`) verm
 
 ## Regeln
 
-**Lies vor jeder Arbeit `factory/system.js`.** Dort stehen alle Regeln (`rules`, R1 …) und alle Werte: Raster, Inset, Radien, Schriftskala, Grenzen. Das ist die einzige Quelle; die Fabrik zeigt dieselben Regeln in der Ansicht „Regeln“, und `tools/check.mjs` misst alle Regeln mit `checks`. Die Werte können sich ändern – der Nutzer passt Regeln in der Ansicht „Regeln“ live an. Lies sie deshalb jedes Mal, statt sie anzunehmen. `{unit}`, `{inset}` usw. in Regeltexten sind Platzhalter für die Werte darüber.
+Es gibt mehrere **Regelwerke** in `systems/<id>/`: `fabrik` (8-px-Raster, Inter + Baskerville) und `zds` (ZEIT Design System: Tablet Gothic + Zeit Tiemann Schmal, ZDS-Tokens aus `@zeitonline/design-system`, Abstandsskala statt Raster). Welches aktiv ist, steht in der Anfrage; ohne Angabe gilt `fabrik`.
+
+**Lies vor jeder Arbeit `systems/<id>/system.js` des aktiven Regelwerks** und die zugehörige `system.css`. Dort stehen alle Regeln (`rules`) und Werte. Nur Messungen, die eine Regel unter `checks` führt, zählen. Die Fabrik zeigt dieselben Regeln in der Ansicht „Regeln“; `node tools/check.mjs --system <id>` misst sie.
+
+Komponenten sollen in **beiden** Regelwerken funktionieren: nur `--c-*`-Tokens und `.t-*`-Klassen, keine festen Farbwerte (die übersetzt `systems/zds/system.css` sonst nicht). Wer ausdrücklich für ZDS baut, darf `--z-ds-*` direkt nutzen und nimmt die ZDS-Grade `.t-18`, `.t-22`, `.t-30` usw. Die Werte können sich ändern – der Nutzer passt Regeln in der Ansicht „Regeln“ live an. Lies sie deshalb jedes Mal, statt sie anzunehmen. `{unit}`, `{inset}` usw. in Regeltexten sind Platzhalter für die Werte darüber.
 
 ## Eine Komponente bauen
 
@@ -47,7 +51,7 @@ Helfer `h` in `render(d, h)`:
 - `h.esc(text)`, `h.pad2(n)`, `h.now` (Date), `h.S` (Systemwerte)
 - `h.zoned('Europe/Berlin')` → `{ h, m, s, time, date, weekday, day, month, year, night }`
 
-Bausteine aus `factory/system.css`: `.t-12 … .t-64`, `.tight`, `.w-400 .w-500 .w-600`, `.serif`, `.ink-2 .ink-3`, `.num`, `.clip`, `.stack .row .between .grow`, `.g-8 .g-16 .g-24 .g-32`, `.btn-round` (`.sm`, `.solid`), `.btn-pill`, `.chip`. Tokens: `--c-ink --c-ink-2 --c-ink-3 --c-line --c-fill --c-fill-2 --c-surface --c-accent --c-accent-soft --c-warm --c-warm-soft --c-highlight --c-dark --c-dark-2 --c-on-dark --c-on-dark-2`, Radien `--r-8 --r-16 --r-pill`.
+Bausteine aus `systems/<id>/system.css`: `.t-12 … .t-64`, `.tight`, `.w-400 .w-500 .w-600`, `.serif`, `.ink-2 .ink-3`, `.num`, `.clip`, `.stack .row .between .grow`, `.g-8 .g-16 .g-24 .g-32`, `.btn-round` (`.sm`, `.solid`), `.btn-pill`, `.chip`. Tokens: `--c-ink --c-ink-2 --c-ink-3 --c-line --c-fill --c-fill-2 --c-surface --c-accent --c-accent-soft --c-warm --c-warm-soft --c-highlight --c-dark --c-dark-2 --c-on-dark --c-on-dark-2`, Radien `--r-8 --r-16 --r-pill`.
 
 Nur `h.media` für Bilder, keine externen Bilder, Fonts oder Skripte. `data-role="Wert"` an einem Textelement benennt es in Struktur- und Schriftenschicht um.
 
@@ -55,7 +59,7 @@ Nur `h.media` für Bilder, keine externen Bilder, Fonts oder Skripte. `data-role
 
 So ist das System entstanden: Etwas wirkt falsch, man findet heraus, warum, und schreibt es als Regel auf. Wenn der Nutzer so etwas sagt („zu viele Grautöne“, „die Abstände wirken unruhig“):
 
-1. Regel in `factory/system.js` unter `rules` ergänzen (R9 …), Werte daneben eintragen.
+1. Regel in `systems/<id>/system.js` des aktiven Regelwerks unter `rules` ergänzen, Werte daneben eintragen.
 2. Wenn messbar: Prüfung in `measure()` in `factory/factory.js` ergänzen (`V('kürzel', 'Meldung')`) und das Kürzel in `checks` der Regel eintragen.
 3. `node tools/check.mjs` über alle Komponenten laufen lassen und Verstöße beheben.
 
@@ -82,3 +86,4 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 - Verlauf: Der Ordner ist ein Git-Repository. `tools/serve.mjs` committet jede Änderung selbst (auch deine) und bietet in der Fabrik „Rückgängig“ und „Hierhin zurück“. Committe und pushe nicht selbst.
 - `factory/` nur ändern, wenn es um Regeln oder die Fabrik selbst geht. Stile der Fabrik nie so schreiben, dass sie in Karten greifen (Kindselektoren `>` statt Nachfahren).
 - `python3` ist hier ein Xcode-Stub: Skripte in Node schreiben.
+- ZEIT-Schriften liegen in `systems/zds/fonts/` und sind absichtlich nicht im Repository (öffentlich auf GitHub). Nie committen.

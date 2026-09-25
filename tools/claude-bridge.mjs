@@ -14,7 +14,7 @@ export function claudeAvailable() {
 }
 
 const SYSTEM = `Du wirst aus der Oberfläche der Component Factory aufgerufen (Eingabezeile „Bauen“ oder Bearbeiten-Modus). Der Nutzer sieht deine Arbeitsschritte live mit.
-Arbeite strikt nach CLAUDE.md und den Regeln in factory/system.js. Lies components/<id>.tweaks.js, falls vorhanden: gesperrte Flächen (locks) nie verändern.
+Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk (Datei steht unten). Lies components/<id>.tweaks.js, falls vorhanden: gesperrte Flächen (locks) nie verändern.
 - Neue Komponente gewünscht: components/<id>.js mit drei Layouts anlegen und die id in components/_index.js eintragen.
 - Änderung an einer bestehenden Komponente, einem Layout oder einer Regel: nur das Nötige ändern. Änderungen aus dem Bearbeiten-Modus (Auto-Layout) sind verbindlich: Reihenfolge, feste Größen und gap als Struktur im Code umsetzen (Markup/data, width/height, gap), nie mit absoluten Positionen oder translate; danach nicht mehr im Raster liegende Flächen ausgleichen.
 - Danach immer: node tools/check.mjs <id> bis alles ✓ ist. Dann den Screenshot NEU erzeugen (node tools/shot.mjs <id> --layouts; PNGs in shots/ von vorher sind veraltet), ansehen und offensichtliche optische Fehler beheben.
@@ -58,9 +58,10 @@ function detailFor(kind, text, isError) {
 }
 
 // onEvent({type:'step', code}) · ({type:'detail', text}) ; done → {type:'done', id, text, cost} | {type:'error', text}
-export function createClaudeJob(prompt, { root, model, onEvent }) {
+export function createClaudeJob(prompt, { root, model, system = 'fabrik', onEvent }) {
+  const sys = `${SYSTEM}\nAktives Regelwerk: systems/${system}/system.js (Werte, Regeln) und systems/${system}/system.css (Tokens, Typo-Klassen). Prüfe mit node tools/check.mjs <id> --system ${system}, Screenshots mit node tools/shot.mjs <id> --layouts --system=${system}.`;
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-    '--allowedTools', ...TOOLS, '--append-system-prompt', SYSTEM];
+    '--allowedTools', ...TOOLS, '--append-system-prompt', sys];
   if (model) args.push('--model', model);
   const proc = spawn(BIN, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
   const pending = new Map();

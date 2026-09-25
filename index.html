@@ -7,7 +7,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:ital,wght@0,400;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="factory/system.css">
+<script src="systems/_systems.js"></script>
+<script>
+  // Aktives Regelwerk wählen und laden, bevor die Fabrik startet
+  (function () {
+    var list = (window.CF_SYSTEMS || []).map(function (s) { return s.id; });
+    var id = new URLSearchParams(location.search).get('system');
+    try { id = id || localStorage.getItem('cf.system'); } catch (e) {}
+    if (list.indexOf(id) < 0) id = list[0] || 'fabrik';
+    window.CF_SYSTEM_ID = id;
+    document.write('<link rel="stylesheet" href="systems/' + id + '/system.css"><script src="systems/' + id + '/system.js"><\/script>');
+  })();
+</script>
 <link rel="stylesheet" href="factory/factory.css">
 </head>
 <body>
@@ -21,6 +32,7 @@
     <button data-view="rules">Regeln</button>
   </nav>
   <div class="cf-right">
+    <div class="cf-sys" id="cf-sys" role="group" aria-label="Regelwerk"></div>
     <div id="cf-sum"></div>
     <button class="cf-btn" id="cf-hist" hidden aria-haspopup="dialog" aria-expanded="false"></button>
     <button class="cf-btn" id="cf-media" title="Bildquelle wechseln – oder Bilder/Videos ins Fenster ziehen"></button>
@@ -28,7 +40,6 @@
 </header>
 <main id="cf-main"></main>
 <div class="cf-drop" id="cf-drop"><div>Bilder oder Videos ablegen<br><span>Sie füllen alle Medienflächen der Komponenten.</span></div></div>
-<script src="factory/system.js"></script>
 <script src="factory/factory.js"></script>
 <script src="components/_index.js"></script>
 </body>

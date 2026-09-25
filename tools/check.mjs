@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Prüft alle (oder die genannten) Komponenten gegen das Regelwerk in factory/system.js.
+// Prüft alle (oder die genannten) Komponenten gegen ein Regelwerk aus systems/<id>/system.js (Standard: fabrik).
+//   node tools/check.mjs --system zds  gegen das ZEIT Design System
 //   node tools/check.mjs              alle Komponenten
 //   node tools/check.mjs music inbox  nur diese
 //   node tools/check.mjs --json       Rohbericht
@@ -8,13 +9,15 @@
 import { withPage, pageURL } from './_chrome.mjs';
 
 const args = process.argv.slice(2);
-const only = args.filter(a => !a.startsWith('-'));
+const sysArg = args.find(a => a.startsWith('--system'));
+const sysId = sysArg ? (sysArg.includes('=') ? sysArg.split('=')[1] : args[args.indexOf(sysArg) + 1]) : 'fabrik';
+const only = args.filter((a, i) => !a.startsWith('-') && !(sysArg && !sysArg.includes('=') && args[i - 1] === sysArg));
 const asJSON = args.includes('--json');
 const stress = args.includes('--stress');
 
 let report, pageErrors = [];
 try {
-  report = await withPage(pageURL(stress ? 'check&stress' : 'check'), async page => {
+  report = await withPage(pageURL(`check&system=${encodeURIComponent(sysId)}${stress ? '&stress' : ''}`), async page => {
     const done = await page.waitFor("document.documentElement.dataset.done === '1'", 30000);
     pageErrors = page.errors;
     return done ? JSON.parse(await page.eval("document.getElementById('cf-report').textContent")) : null;
@@ -39,7 +42,7 @@ if (asJSON) {
 
 const { unit, inset, limits } = report.system;
 const dim = s => `\x1b[2m${s}\x1b[0m`, red = s => `\x1b[31m${s}\x1b[0m`, green = s => `\x1b[32m${s}\x1b[0m`;
-console.log(dim(`Component Factory · Prüfung · Raster ${unit} px · Inset ${inset} px · max. ${limits.sizes} Größen / ${limits.weights} Schnitte / ${limits.families} Familien`));
+console.log(dim(`Component Factory · Prüfung · ${report.system.name} · ${unit > 1 ? `Raster ${unit} px` : 'Abstandsskala'} · Inset ${inset} px · max. ${limits.sizes} Größen / ${limits.weights} Schnitte / ${limits.families} Familien`));
 
 const loadErr = report.loadErrors.filter(e => !only.length || only.some(id => e.includes(id)));
 for (const e of loadErr) console.log(red(`✕ Ladefehler: ${e}`));

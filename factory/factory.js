@@ -6,6 +6,10 @@
 
 const S = window.SYSTEM;
 let U = S.unit; // wird beim Anpassen der Regeln neu gesetzt
+const SYS_ID = window.CF_SYSTEM_ID || 'fabrik';
+const SYS_JS = `systems/${SYS_ID}/system.js`, SYS_CSS = `systems/${SYS_ID}/system.css`;
+const GV = () => S.gridView || (U < 4 ? 4 : U); // Abstand der Rasterlinien in der Pixel-Schicht
+const isSerif = f => /basker|tiemann|serif|georgia|times/i.test(f || '');
 const Q = new URLSearchParams(location.search);
 const CHECK = Q.has('check');
 const STILL = CHECK || Q.has('still') || matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -209,7 +213,7 @@ const LOREM = 'Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiu
 const radiiLabel = () => S.innerRadii.map(r => r === 'pill' ? 'Pille' : r).join(', ');
 const inScale = s => S.typeScale.some(t => Math.abs(t - s) <= 0.5);
 const shortFam = f => f.replace(/^Libre /, '');
-const famCSS = f => `"${f}", ${/basker|serif|georgia/i.test(f) ? 'serif' : 'sans-serif'}`;
+const famCSS = f => `"${f}", ${isSerif(f) ? 'serif' : 'sans-serif'}`;
 
 function alpha(col) {
   if (!col || col === 'transparent') return 0;
@@ -237,7 +241,7 @@ function tokenPalette() {
   const names = new Set();
   for (const sheet of document.styleSheets) {
     let rules; try { rules = sheet.cssRules; } catch { continue; }
-    for (const r of rules) if (r.selectorText === ':root') for (const p of r.style) if (p.startsWith('--c-')) names.add(p);
+    for (const r of rules) if (r.selectorText === ':root') for (const p of r.style) if ((S.tokenPrefixes || ['--c-']).some(x => p.startsWith(x))) names.add(p);
   }
   PALETTE = [...names].map(name => { probe.style.color = `var(${name})`; return { name, ...parseColor(getComputedStyle(probe).color) }; }).filter(t => t.rgb);
   probe.remove();
@@ -307,7 +311,7 @@ function measure(c, l, host) {
   const V = (rule, msg) => bp.violations.push({ rule, msg });
   const err = card.querySelector('.cf-error');
   if (err) V('error', err.textContent);
-  if (!l.height) V('card', `Layout „${l.id}“ hat keine feste height (gemessen ${H} px)`);
+  if (!l.height) V('height', `Layout „${l.id}“ hat keine feste height (gemessen ${H} px)`);
   if (!onGrid(W) || !onGrid(H)) V('card', `Karte ${W} × ${H} liegt nicht im ${U}er-Raster`);
   if (card.scrollHeight > card.clientHeight + 1 || card.scrollWidth > card.clientWidth + 1) {
     V('overflow', `Inhalt läuft über: ${card.scrollWidth} × ${card.scrollHeight} statt ${W} × ${H}`);
@@ -381,6 +385,31 @@ function measure(c, l, host) {
     }
   }
 
+  // Abstände aus der Skala: gap aller Flex/Grid-Container, padding und margin der Flächen und ihrer Container
+  if (S.rules.some(r => r.checks.includes('spacing'))) {
+    const scale = new Set([0, ...(S.spacing || [])]);
+    const bad = new Map();
+    for (const el of card.querySelectorAll('*')) {
+      if (el instanceof SVGElement || el.closest('[data-media], .cf-error')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'inline' || cs.display === 'none') continue;
+      const vals = [];
+      if (/flex|grid/.test(cs.display)) vals.push(['gap', cs.rowGap], ['gap', cs.columnGap]);
+      if (el.hasAttribute('data-area') || [...el.children].some(k => k.hasAttribute && k.hasAttribute('data-area'))) {
+        for (const sd of ['Top', 'Right', 'Bottom', 'Left']) vals.push(['padding', cs[`padding${sd}`]], ['margin', cs[`margin${sd}`]]);
+      }
+      for (const [kind, v] of vals) {
+        if (!v || v === 'normal' || v === 'auto') continue;
+        const n = Math.abs(r1(parseFloat(v)));
+        if (!Number.isFinite(n) || scale.has(n)) continue;
+        const key = `${kind} ${n}`;
+        if (!bad.has(key)) bad.set(key, el.dataset.area ? `„${el.dataset.area}“` : el.classList[0] ? `.${el.classList[0]}` : el.tagName.toLowerCase());
+      }
+    }
+    [...bad].slice(0, 4).forEach(([k, where]) => V('spacing', `${k[0].toUpperCase()}${k.slice(1)} px in ${where} ist nicht in der Skala (${S.spacing.join(', ')})`));
+    if (bad.size > 4) V('spacing', `… und ${bad.size - 4} weitere Abstände außerhalb der Skala`);
+  }
+
   // Farben (R7): nur Tokens (auch mit Transparenz), höchstens eine Akzentfamilie
   const colors = new Map();
   const note = (v, where) => { const c = parseColor(v); if (!c || c.a < .02) return; const k = c.rgb.join(); if (!colors.has(k)) colors.set(k, { ...c, where }); };
@@ -400,11 +429,15 @@ function measure(c, l, host) {
   }
   const accentFams = new Set(), offToken = [];
   bp.colors = [];
-  colors.forEach(c => { const t = matchToken(c); bp.colors.push({ hex: hexOf(c.rgb), a: c.a, where: c.where, token: t }); if (!t) offToken.push(c); else if (ACCENT_FAMILY[t]) accentFams.add(ACCENT_FAMILY[t]); });
+  const famOf = t => { const fams = S.accentFamilies || null; if (!fams) return ACCENT_FAMILY[t]; return Object.keys(fams).find(k => fams[k].includes(t)); };
+  colors.forEach(c => { const t = matchToken(c); bp.colors.push({ hex: hexOf(c.rgb), a: c.a, where: c.where, token: t }); if (!t) offToken.push(c); else if (famOf(t)) accentFams.add(famOf(t)); });
   offToken.slice(0, 4).forEach(c => V('color', `Farbe ${hexOf(c.rgb)}${c.a < 1 ? ` (${Math.round(c.a * 100)} %)` : ''} ist kein Token (${c.where}) – nimm eine --c-*-Farbe`));
   if (offToken.length > 4) V('color', `… und ${offToken.length - 4} weitere Farben ohne Token`);
   if (accentFams.size > 1) V('accent', `${accentFams.size} Akzentfarben (${[...accentFams].join(', ')}) – erlaubt ist eine pro Komponente`);
   bp.accents = [...accentFams];
+  // Keine dunklen Flächen (nur wenn das Regelwerk es verlangt)
+  const bgc = parseColor(getComputedStyle(card).backgroundColor);
+  if (bgc && bgc.a > .5) { const lum = (.2126 * bgc.rgb[0] + .7152 * bgc.rgb[1] + .0722 * bgc.rgb[2]) / 255; if (lum < .3) V('dark', `Dunkle Kartenfläche ${hexOf(bgc.rgb)} – helle Flächen, gedeckte Verläufe statt dunkler Bühnen`); }
 
   // Texte
   const byEl = new Map();
@@ -484,7 +517,7 @@ function measure(c, l, host) {
     let role = ROLES[rank] || `Größe ${rank + 1}`;
     if (same.length > 1) {
       if (s.weight > Math.min(...same.map(x => x.weight))) role += ` ${WNAME[s.weight] || s.weight}`;
-      if (new Set(same.map(x => x.family)).size > 1 && /basker/i.test(s.family)) role += ' serif';
+      if (new Set(same.map(x => x.family)).size > 1 && isSerif(s.family)) role += ' serif';
     }
     s.role = s.custom || role;
     s.bad = !S.families[s.family] || !inScale(s.size);
@@ -505,8 +538,13 @@ function measure(c, l, host) {
   if (weights.length > L.weights) V('weights', `${weights.length} Schnitte: ${weights.join(', ')} (max. ${L.weights})`);
   sizes.filter(s => !inScale(s)).forEach(s => V('scale', `Schriftgröße ${s} px ist nicht in der Skala (${S.typeScale.join(', ')})`));
   const badLh = new Map();
-  T.filter(t => !t.svg && (t.lh == null || !onStep(t.lh, S.lineHeightStep))).forEach(t => { if (!badLh.has(t.lh)) badLh.set(t.lh, t.text); });
-  badLh.forEach((txt, lh) => V('leading', `Zeilenhöhe ${lh == null ? 'normal' : lh + ' px'} bei „${txt.slice(0, 28)}“ (Vielfache von ${S.lineHeightStep})`));
+  const lhOk = t => t.lh != null && (S.lineHeightRatios
+    ? S.lineHeightRatios.some(q => Math.abs(t.lh - t.size * q) <= .6)
+    : onStep(t.lh, S.lineHeightStep));
+  T.filter(t => !t.svg && !lhOk(t)).forEach(t => { if (!badLh.has(t.lh)) badLh.set(t.lh, t); });
+  badLh.forEach((t, lh) => V('leading', `Zeilenhöhe ${lh == null ? 'normal' : lh + ' px'} bei „${t.text.slice(0, 28)}“ (${S.lineHeightRatios ? `Faktor ${S.lineHeightRatios.join(' · ')} der Größe` : `Vielfache von ${S.lineHeightStep}`})`));
+  // Überschriften-Schrift nur für Überschriften
+  if (S.headline) T.filter(t => t.family === S.headline.family && t.size < S.headline.min).forEach(t => V('headline', `„${t.text.slice(0, 24)}“ in ${t.family} ${t.size} px – diese Schrift erst ab ${S.headline.min} px (Überschriften)`));
 
   for (const [name, r] of Object.entries(F.tw[c.id]?.[l.id]?.locks || {})) {
     const a = bp.areas.find(x => x.name === name);
@@ -514,6 +552,9 @@ function measure(c, l, host) {
     else if (['x', 'y', 'w', 'h'].some(k => Math.abs(a[k] - r[k]) > .5)) V('lock', `Gesperrte Fläche „${name}“ wurde verändert: war ${r.x}, ${r.y} · ${r.w} × ${r.h}, ist ${a.x}, ${a.y} · ${a.w} × ${a.h}`);
   }
 
+  // Nur zählen, was das aktive Regelwerk als Regel führt (Renderfehler zählen immer)
+  const active = new Set(['error', ...S.rules.flatMap(r => r.checks)]);
+  bp.violations = bp.violations.filter(v => active.has(v.rule));
   bp.ok = bp.violations.length === 0;
   return bp;
 }
@@ -535,6 +576,7 @@ const bpOf = (c, l) => F.bps[`${c.id}/${l.id}`];
 function consistencyPass() {
   const all = Object.values(F.bps);
   all.forEach(b => { b.violations = b.violations.filter(v => v.rule !== 'consistency'); });
+  if (!S.rules.some(r => r.checks.includes('consistency'))) { all.forEach(b => { b.ok = b.violations.length === 0; }); F.consistency = null; return; }
   const heads = [];
   for (const b of all) {
     const kopf = b.areas.find(a => a.name === 'text:kopf');
@@ -569,10 +611,10 @@ function consistencyPass() {
 /* ---------- Schichten ---------- */
 let UID = 0;
 function gridSVG(bp, { faint = false, anim = false } = {}) {
-  const W = bp.w, H = bp.h, I = S.inset, R = S.radius, id = `cfg${++UID}`;
+  const W = bp.w, H = bp.h, I = S.inset, R = S.radius, id = `cfg${++UID}`, G = GV();
   let lines = '';
-  for (let x = U, i = 0; x < W; x += U, i++) lines += `<line class="gv" x1="${x}" y1="0" x2="${x}" y2="${H}" pathLength="1" style="--i:${i}"/>`;
-  for (let y = U, j = 0; y < H; y += U, j++) lines += `<line class="gh" x1="0" y1="${y}" x2="${W}" y2="${y}" pathLength="1" style="--i:${j}"/>`;
+  for (let x = G, i = 0; x < W; x += G, i++) lines += `<line class="gv" x1="${x}" y1="0" x2="${x}" y2="${H}" pathLength="1" style="--i:${i}"/>`;
+  for (let y = G, j = 0; y < H; y += G, j++) lines += `<line class="gh" x1="0" y1="${y}" x2="${W}" y2="${y}" pathLength="1" style="--i:${j}"/>`;
   const band = `M0 0H${W}V${H}H0Z M${I} ${I}V${H - I}H${W - I}V${I}Z`;
   return `<svg class="cf-grid${faint ? ' is-faint' : ''}${anim ? ' is-anim' : ''}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
 <defs><clipPath id="${id}o"><rect width="${W}" height="${H}" rx="${R}"/></clipPath><clipPath id="${id}i"><rect x="${I}" y="${I}" width="${W - 2 * I}" height="${H - 2 * I}"/></clipPath><clipPath id="${id}b"><path d="${band}" clip-rule="evenodd"/></clipPath></defs>
@@ -617,7 +659,7 @@ const famLine = bp => bp.type.families.map(f => `${shortFam(f)} für ${(S.famili
 const size = bp => `${bp.w} × ${bp.h} px`;
 const CAPS = {
   original: bp => ['Original', size(bp), 'Abstand, Schrift und Bild ergeben eine klare Komponente.'],
-  pixels: bp => ['Pixel', size(bp), [`Radius ${S.radius} px · Inset ${S.inset} px`, `${Math.round(bp.h / U)} Zeilen · ${U} px`]],
+  pixels: bp => ['Pixel', size(bp), [`Radius ${S.radius} px · Inset ${S.inset} px`, `${Math.round(bp.h / GV())} Zeilen · ${GV()} px`]],
   areas: bp => ['Abstand & Flächen', size(bp), `Farbe klärt Gruppen und Abstände, bevor Details kommen. ${bp.areas.length} Flächen.`],
   structure: bp => ['Struktur', size(bp), 'Schrift und Ausrichtung zeigen die Hierarchie vor dem Feinschliff.'],
   fonts: bp => ['Schriften', `${bp.type.sizes.length} Größen · ${bp.type.weights.length} Schnitte`, famLine(bp)],
@@ -652,6 +694,7 @@ function syncURL() {
   if (state.l) p.set('l', state.l);
   if (state.solo) p.set('solo', '');
   if (Q.has('still')) p.set('still', '');
+  if (Q.get('system')) p.set('system', Q.get('system'));
   try { history.replaceState(null, '', `${location.pathname}?${p.toString().replace(/=(&|$)/g, '$1')}`); } catch {}
   store.set('view', state.view);
 }
@@ -767,10 +810,10 @@ async function renderHistory() {
 function compareTargets(item) {
   const ids = [...new Set(item.files.map(f => f.match(/^components\/([a-z0-9-]+?)(?:\.tweaks)?\.js$/)?.[1]).filter(id => id && id !== '_index'))];
   const t = ids.map(id => ({ kind: 'c', id, label: F.byId[id]?.name || id }));
-  if (item.files.includes('factory/system.js')) t.push({ kind: 'rules', label: 'Regeln' });
+  if (item.files.some(f => f === 'factory/system.js' || /^systems\/[a-z0-9-]+\/system\.(js|css)$/.test(f))) t.push({ kind: 'rules', label: 'Regeln' });
   return t;
 }
-const atURL = (sha, t) => `/@${sha}/index.html?${t.kind === 'rules' ? 'view=rules' : `view=layouts&c=${encodeURIComponent(t.id)}&solo`}&still&media=none`;
+const atURL = (sha, t) => `/@${sha}/index.html?${t.kind === 'rules' ? 'view=rules' : `view=layouts&c=${encodeURIComponent(t.id)}&solo`}&still&media=none&system=${SYS_ID}`;
 async function openCompare(item, idx = 0) {
   document.getElementById('cf-cmp')?.remove();
   const targets = compareTargets(item);
@@ -900,6 +943,65 @@ function initHistory() {
   try { const t = sessionStorage.getItem('cf.toast'); if (t) { sessionStorage.removeItem('cf.toast'); toast(t); } } catch {}
 }
 
+/* ---------- Regelwerk umschalten ---------- */
+function renderSystemSwitch() {
+  const box = document.getElementById('cf-sys');
+  const list = window.CF_SYSTEMS || [];
+  if (!box || list.length < 2) return;
+  box.innerHTML = list.map(x => `<button type="button" data-sys="${esc(x.id)}" title="${esc(x.note || '')}"${x.id === SYS_ID ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(x.name)}</button>`).join('');
+  box.querySelectorAll('[data-sys]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.sys === SYS_ID) return;
+    try { localStorage.setItem('cf.system', b.dataset.sys); } catch {}
+    const p = new URLSearchParams(location.search);
+    p.delete('system');
+    location.search = p.toString().replace(/=(&|$)/g, '$1');
+  }));
+}
+
+// Dieselben Komponenten in zwei Regelwerken nebeneinander (nur über tools/serve.mjs)
+function openSystemsCompare(otherId) {
+  document.getElementById('cf-cmp')?.remove();
+  const sys = window.CF_SYSTEMS || [];
+  const sides = [SYS_ID, otherId].map(id => sys.find(x => x.id === id) || { id, name: id });
+  const m = document.createElement('div');
+  m.id = 'cf-cmp';
+  m.className = 'cmp';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-label', 'Regelwerke vergleichen');
+  m.innerHTML = `<header class="cmp-head">
+      <div class="cmp-title"><b>${esc(sides[0].name)} / ${esc(sides[1].name)}</b><span>Dieselben Komponenten in beiden Regelwerken, jeweils nach dessen Regeln gemessen</span></div>
+      <label class="cmp-sync"><input type="checkbox" id="cmp-sync" checked> Gemeinsam scrollen</label>
+      <button type="button" class="cf-btn" data-a="close">${icon('close', 14)}Schließen</button>
+    </header>
+    <div class="cmp-body">${sides.map((x, i) => `<section><p class="cmp-lab${i ? ' is-after' : ''}">${esc(x.name)} <span class="cmp-count" data-count="${i}"></span></p><div class="cmp-frame"><iframe title="${esc(x.name)}" src="/index.html?view=layouts&system=${encodeURIComponent(x.id)}&still&media=none"></iframe></div></section>`).join('')}</div>`;
+  document.body.appendChild(m);
+  document.documentElement.classList.add('has-modal');
+  const close = () => { m.remove(); document.documentElement.classList.remove('has-modal'); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  m.querySelector('[data-a="close"]').addEventListener('click', close);
+  const frames = [...m.querySelectorAll('iframe')];
+  const t0 = Date.now();
+  const tick = () => {
+    if (!m.isConnected) return;
+    const ready = frames.filter(f => f.contentDocument?.documentElement?.dataset.ready === '1' && f.contentWindow.Factory?.bps);
+    if (ready.length < 2) { if (Date.now() - t0 < 30000) setTimeout(tick, 200); return; }
+    frames.forEach((f, i) => {
+      const d = f.contentDocument, bps = Object.values(f.contentWindow.Factory.bps), ok = bps.filter(b => b.ok).length;
+      m.querySelector(`[data-count="${i}"]`).textContent = `· ${ok} von ${bps.length} Layouts im Raster`;
+      const st = d.createElement('style');
+      st.textContent = '.cf-top,.rs-draft,.cf-edit,.cf-stress-btn{display:none!important}.v-layouts{padding-top:24px!important}.cmp-bad{outline:3px solid #c9423a;outline-offset:6px}';
+      d.head.appendChild(st);
+      bps.filter(b => !b.ok).forEach(b => d.querySelector(`.cf-card[data-c="${CSS.escape(b.c)}"][data-l="${CSS.escape(b.l)}"]`)?.classList.add('cmp-bad'));
+      f.contentWindow.addEventListener('scroll', () => {
+        if (!m.querySelector('#cmp-sync')?.checked || f._sync) { f._sync = false; return; }
+        frames.filter(o => o !== f).forEach(o => { o._sync = true; o.contentWindow.scrollTo(0, f.contentWindow.scrollY); });
+      });
+    });
+  };
+  tick();
+}
+
 function initChrome() {
   document.querySelectorAll('.cf-tabs button').forEach(b => b.addEventListener('click', () => {
     state.view = b.dataset.view; state.solo = false; route();
@@ -911,6 +1013,7 @@ function initChrome() {
   }
   renderMediaBtn();
   renderSummary();
+  renderSystemSwitch();
   initHistory();
   if (mediaSource === 'web') probeWeb();
 
@@ -1105,29 +1208,32 @@ function colorTokens() {
   return [...names].map(n => ({ name: n, value: cs.getPropertyValue(n).trim() }));
 }
 
+const FIG_BY_CHECK = [['grid', 'grid'], ['spacing', 'grid'], ['inset', 'inset'], ['family', 'fonts'], ['radius', 'radii'], ['areas', 'areas'], ['overflow', 'structure'], ['color', 'colors'], ['target', 'targets'], ['consistency', 'cons'], ['dark', 'dark'], ['lock', 'lock']];
+const figKey = rule => rule.fig || (FIG_BY_CHECK.find(([k]) => (rule.checks || []).includes(k)) || [])[1] || ({ R1: 'grid', R2: 'inset', R3: 'fonts', R4: 'radii', R5: 'areas', R6: 'structure', R7: 'colors', R8: 'three', R10: 'targets', R11: 'cons' })[rule.id];
 function ruleFigure(rule, ex) {
   const { c, l, bp } = ex.main;
-  switch (rule.id) {
-    case 'R1': return mini(layerCard('areas', bp), bp.w, bp.h, .64);
-    case 'R2': return `<div class="rs-inset">${mini(layerCard('pixels', bp), bp.w, bp.h, .64)}<span>Inset ${S.inset} px</span></div>`;
-    case 'R3': return mini(layerCard('fonts', ex.type.bp), ex.type.bp.w, ex.type.bp.h, .64);
-    case 'R4': return `<div class="rs-radii">${[...S.innerRadii, 'card'].map(r => {
+  switch (figKey(rule)) {
+    case 'grid': return mini(layerCard('areas', bp), bp.w, bp.h, .64);
+    case 'inset': return `<div class="rs-inset">${mini(layerCard('pixels', bp), bp.w, bp.h, .64)}<span>Inset ${S.inset} px</span></div>`;
+    case 'fonts': return mini(layerCard('fonts', ex.type.bp), ex.type.bp.w, ex.type.bp.h, .64);
+    case 'radii': return `<div class="rs-radii">${[...S.innerRadii, 'card'].map(r => {
       const px = r === 'pill' ? 999 : r === 'card' ? S.radius : r;
       return `<div><i style="border-radius:${px}px${r === 'card' ? ';width:72px' : ''}"></i><span>${r === 'pill' ? 'Pille' : r === 'card' ? `Karte ${S.radius}` : r}</span></div>`;
     }).join('')}</div>`;
-    case 'R5': return mini(`<div class="cf-shell cf-layer" style="width:${bp.w}px;height:${bp.h}px">${areaRects(bp)}</div>`, bp.w, bp.h, .64);
-    case 'R6': return mini(layerCard('structure', bp), bp.w, bp.h, .64);
-    case 'R7': return `<div class="rs-dots">${colorTokens().slice(0, 12).map(t => `<i style="background:${t.value}" title="${esc(t.name)}"></i>`).join('')}</div>`;
-    case 'R10': {
+    case 'areas': return mini(`<div class="cf-shell cf-layer" style="width:${bp.w}px;height:${bp.h}px">${areaRects(bp)}</div>`, bp.w, bp.h, .64);
+    case 'structure': return mini(layerCard('structure', bp), bp.w, bp.h, .64);
+    case 'colors': return `<div class="rs-dots">${colorTokens().slice(0, 12).map(t => `<i style="background:${t.value}" title="${esc(t.name)}"></i>`).join('')}</div>`;
+    case 'dark': return `<div class="rs-darkfig"><div class="is-ok"><i></i><span>hell</span></div><div class="is-bad"><i></i><span>dunkle Bühne</span></div></div>`;
+    case 'targets': {
       const m = S.minTarget || 32;
       const box = (n, cls, label) => `<div class="${cls}"><i style="width:${n}px;height:${n}px"></i><span>${label}</span></div>`;
       return `<div class="rs-targets">${box(Math.max(16, m - 8), 'is-bad', `${Math.max(16, m - 8)} · zu klein`)}${box(m, 'is-ok', `${m} · Minimum`)}${box(m + 12, '', `${m + 12}`)}</div>`;
     }
-    case 'R11': {
+    case 'cons': {
       const k = F.consistency || {};
       return `<div class="rs-cons"><p><span>Kopfzeile</span><b>${k.style ? esc(k.style.label) : 'keine klare Mehrheit'}</b>${k.style ? `<em>${k.style.count} von ${k.style.of} Layouts</em>` : ''}</p><p><span>Abstand darunter</span><b>${k.gap ? `${k.gap.value} px` : 'keine klare Mehrheit'}</b>${k.gap ? `<em>${k.gap.count} von ${k.gap.of} Layouts</em>` : ''}</p></div>`;
     }
-    case 'R8': return `<div class="rs-three">${c.layouts.slice(0, 3).map(x => mini(cardHTML(c, x), x.width, bpOf(c, x).h, .22)).join('')}</div>`;
+    case 'three': return `<div class="rs-three">${c.layouts.slice(0, 3).map(x => mini(cardHTML(c, x), x.width, bpOf(c, x).h, .22)).join('')}</div>`;
     default: return `<span class="rs-none">${esc(rule.id)}</span>`;
   }
 }
@@ -1138,14 +1244,14 @@ function ruleFigure(rule, ex) {
 const SYS0 = JSON.stringify(window.SYSTEM);
 const OK0 = { ok: null, total: null };
 let rulesEdit = false;
-const DIFF_NAMES = { minTarget: 'Trefferflächen', unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeltexte' };
+const DIFF_NAMES = { spacing: 'Abstandsskala', lineHeightRatios: 'Zeilenhöhen', minTarget: 'Trefferflächen', unit: 'Raster', inset: 'Inset', radius: 'Kartenradius', innerRadii: 'innere Radien', typeScale: 'Schriftskala', lineHeightStep: 'Zeilenhöhen', 'limits.sizes': 'Größen je Layout', 'limits.weights': 'Schnitte je Layout', 'limits.families': 'Familien je Layout', rules: 'Regeltexte' };
 const getPath = p => p.split('.').reduce((o, k) => o?.[k], S);
 // Platzhalter wie {unit} oder {limits.sizes} in Regeltexten durch die aktuellen Werte ersetzen
 const fillRule = t => String(t).replace(/\{([a-zA-Z.]+)\}/g, (m, p) => { const v = getPath(p); return v == null ? m : Array.isArray(v) ? v.map(x => (x === 'pill' ? 'Pille' : x)).join(', ') : String(v); });
 const setPath = (p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], S)[last] = v; };
 function systemDiff() {
   const A = JSON.parse(SYS0), out = [];
-  for (const k of ['unit', 'inset', 'radius', 'innerRadii', 'typeScale', 'lineHeightStep', 'minTarget']) if (JSON.stringify(A[k]) !== JSON.stringify(S[k])) out.push(k);
+  for (const k of ['unit', 'inset', 'radius', 'innerRadii', 'typeScale', 'lineHeightStep', 'lineHeightRatios', 'spacing', 'minTarget']) if (JSON.stringify(A[k]) !== JSON.stringify(S[k])) out.push(k);
   for (const k of ['sizes', 'weights', 'families']) if (A.limits[k] !== S.limits[k]) out.push(`limits.${k}`);
   if (JSON.stringify(A.rules) !== JSON.stringify(S.rules)) out.push('rules');
   return out;
@@ -1161,15 +1267,20 @@ const layoutCounts = () => { const all = Object.values(F.bps); return { ok: all.
 function ruleControls(rule) {
   const pick = (path, label, opts, fmt) => `<div class="rs-ctl"><span>${label}</span>${seg(`sys:${path}`, getPath(path), opts.map(v => [v, fmt ? fmt(v) : String(v)]))}</div>`;
   const chips = (path, label, opts, fmt) => `<div class="rs-ctl"><span>${label}</span><div class="rs-chips">${opts.map(v => `<button type="button" data-chip="${path}" data-v="${v}"${getPath(path).includes(v) ? ' class="on"' : ''}>${fmt ? fmt(v) : v}</button>`).join('')}</div></div>`;
-  switch (rule.id) {
-    case 'R1': return pick('unit', 'Raster', [4, 8, 12, 16], v => `${v} px`);
-    case 'R2': return pick('inset', 'Inset', [8, 16, 24, 32, 40], v => `${v} px`);
-    case 'R3': return pick('limits.sizes', 'Größen je Layout', [2, 3, 4, 5]) + pick('limits.weights', 'Schnitte je Layout', [1, 2, 3, 4]) + pick('limits.families', 'Familien je Layout', [1, 2, 3])
-      + chips('typeScale', 'Schriftskala', [10, 11, 12, 13, 14, 15, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72]) + pick('lineHeightStep', 'Zeilenhöhen', [4, 8], v => `× ${v}`);
-    case 'R10': return pick('minTarget', 'Mindestgröße', [24, 32, 40, 44, 48], v => `${v} px`);
-    case 'R4': return pick('radius', 'Kartenradius', [12, 16, 20, 24, 32], v => `${v}`) + chips('innerRadii', 'Innere Radien', [0, 4, 8, 12, 16, 24, 'pill'], v => (v === 'pill' ? 'Pille' : v));
-    default: return '';
-  }
+  const CTL = {
+    unit: () => pick('unit', 'Raster', [1, 2, 4, 8, 12, 16], v => (v === 1 ? 'aus' : `${v} px`)),
+    inset: () => pick('inset', 'Inset', [8, 12, 16, 20, 24, 32, 40], v => `${v} px`),
+    limits: () => pick('limits.sizes', 'Größen je Layout', [2, 3, 4, 5]) + pick('limits.weights', 'Schnitte je Layout', [1, 2, 3, 4]) + pick('limits.families', 'Familien je Layout', [1, 2, 3]),
+    typeScale: () => chips('typeScale', 'Schriftskala', [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 40, 42, 46, 48, 54, 56, 64, 72]),
+    lineHeightStep: () => pick('lineHeightStep', 'Zeilenhöhen', [4, 8], v => `× ${v}`),
+    lineHeightRatios: () => chips('lineHeightRatios', 'Zeilenhöhe (Faktor)', [1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.6]),
+    radius: () => pick('radius', 'Kartenradius', [0, 2, 4, 8, 12, 16, 20, 24, 32], v => `${v}`),
+    innerRadii: () => chips('innerRadii', 'Innere Radien', [0, 2, 4, 8, 12, 16, 24, 'pill'], v => (v === 'pill' ? 'Pille' : v)),
+    minTarget: () => pick('minTarget', 'Mindestgröße', [24, 32, 40, 44, 48], v => `${v} px`),
+    spacing: () => chips('spacing', 'Abstandsskala', [2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64]),
+  };
+  const legacy = { R1: ['unit'], R2: ['inset'], R3: ['limits', 'typeScale', 'lineHeightStep'], R4: ['radius', 'innerRadii'], R10: ['minTarget'] };
+  return (rule.ctl || legacy[rule.id] || []).filter(k => CTL[k] && getPath(k === 'limits' ? 'limits.sizes' : k) != null).map(k => CTL[k]()).join('');
 }
 
 function draftBar() {
@@ -1200,7 +1311,7 @@ function bindDraft() {
     btn.textContent = 'Speichert …';
     const system = { ...S, version: /^\d+$/.test(S.version) ? String(+S.version + 1) : S.version };
     try {
-      const r = await fetch('/api/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, message: systemDiff().map(k => DIFF_NAMES[k] || k).join(', ') }) });
+      const r = await fetch('/api/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: SYS_ID, system, message: systemDiff().map(k => DIFF_NAMES[k] || k).join(', ') }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Fehler ${r.status}`);
       btn.textContent = 'Übernommen – lädt neu …';
     } catch (err) {
@@ -1213,13 +1324,13 @@ function bindDraft() {
 
 function violationsPrompt() {
   const lines = Object.values(F.bps).filter(b => !b.ok).map(b => `- ${b.c} / ${b.l}: ${b.violations.map(v => `${v.rule}: ${v.msg}`).join('; ')}`);
-  return `Die Regeln in factory/system.js wurden geändert oder Komponenten verstoßen dagegen. Passe alle betroffenen Komponenten an die aktuellen Regeln an, ohne ihren Charakter zu verändern; gesperrte Flächen (locks in components/<id>.tweaks.js) nicht anfassen. Aktuelle Verstöße:
+  return `Aktives Regelwerk: ${S.name} (${SYS_JS}). Die Regeln darin wurden geändert oder Komponenten verstoßen dagegen. Passe alle betroffenen Komponenten an die aktuellen Regeln an, ohne ihren Charakter zu verändern; gesperrte Flächen (locks in components/<id>.tweaks.js) nicht anfassen. Aktuelle Verstöße:
 ${lines.join('\n')}
 Prüfe danach mit node tools/check.mjs, bis alles ✓ ist.`;
 }
 function checkPrompt(rule) {
-  return `Baue für die Regel ${rule.id} „${fillRule(rule.title)}“ aus factory/system.js eine automatische Prüfung. Regeltext: ${fillRule(rule.text)}
-Ergänze dazu in measure() in factory/factory.js eine Messung mit V('<kürzel>', '<Meldung auf Deutsch>') und trage das Kürzel in checks dieser Regel in factory/system.js ein. Die Messung soll am gerenderten DOM arbeiten wie die übrigen. Lass danach node tools/check.mjs laufen und berichte, welche Komponenten die neue Regel verletzen – ändere die Komponenten selbst noch nicht.`;
+  return `Baue für die Regel ${rule.id} „${fillRule(rule.title)}“ aus ${SYS_JS} eine automatische Prüfung. Regeltext: ${fillRule(rule.text)}
+Ergänze dazu in measure() in factory/factory.js eine Messung mit V('<kürzel>', '<Meldung auf Deutsch>') und trage das Kürzel in checks dieser Regel in ${SYS_JS} ein. Die Messung soll am gerenderten DOM arbeiten wie die übrigen. Lass danach node tools/check.mjs laufen und berichte, welche Komponenten die neue Regel verletzen – ändere die Komponenten selbst noch nicht.`;
 }
 
 function viewRules(keepScroll) {
@@ -1236,7 +1347,7 @@ function viewRules(keepScroll) {
   const L = S.limits;
   const draft = systemDiff().length > 0;
   const facts = [
-    ['Raster', `${U} px`], ['Inset', `${S.inset} px`], ['Kartenradius', `${S.radius} px`], ['Breite', `${S.width} px`],
+    U > 1 ? ['Raster', `${U} px`] : ['Abstände', `${S.spacing.length} Stufen`], ['Inset', `${S.inset} px`], ['Kartenradius', `${S.radius} px`], ['Breite', `${S.width} px`],
     ['Familien', `${L.families}`], ['Größen je Layout', `max. ${L.sizes}`], ['Schnitte je Layout', `max. ${L.weights}`],
   ];
   const ruleHTML = (rule, idx) => {
@@ -1270,7 +1381,8 @@ function viewRules(keepScroll) {
     <div class="rs-headrow">
       <h1 class="rs-h1">Regeln für alle Komponenten</h1>
       <button type="button" class="cf-btn${rulesEdit ? ' is-primary' : ''}" data-a="rules-edit">${rulesEdit ? `${icon('check', 14)}Fertig` : `${icon('edit', 14)}Regeln anpassen`}</button></div>
-    <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Quelle ist <code>factory/system.js</code>, dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
+    ${F.live && (window.CF_SYSTEMS || []).length > 1 ? `<div class="rs-syscmp">${(window.CF_SYSTEMS || []).filter(x => x.id !== SYS_ID).map(x => `<button type="button" class="cf-btn" data-syscmp="${esc(x.id)}">${icon('grid', 14)}Mit ${esc(x.name)} vergleichen</button>`).join('')}</div>` : ''}
+    <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Aktives Regelwerk: <b>${esc(S.name)}</b>, Quelle ist <code>${SYS_JS}</code> – dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
     <dl class="rs-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
     ${all.length ? `<div class="rs-sum">${okAll === all.length ? `<span class="cf-badge ok">${icon('check', 14)}Alle ${all.length} Layouts erfüllen die gemessenen Regeln</span>` : `<span class="cf-badge bad">${okAll} von ${all.length} Layouts erfüllen die gemessenen Regeln</span>${F.live && !draft ? '<button type="button" class="cf-btn" data-a="fix-all">Verstöße von Claude beheben lassen</button>' : ''}`}<div class="b-log ed-log rs-fixlog"></div></div>` : ''}
   </header>
@@ -1301,7 +1413,7 @@ function viewRules(keepScroll) {
     </div>
     <div class="rs-panel">
       <h2 class="rs-ph">Radien</h2>
-      ${ruleFigure({ id: 'R4' }, ex)}
+      ${ruleFigure({ fig: 'radii', checks: [] }, ex)}
     </div>
     <div class="rs-panel rs-wide">
       <h2 class="rs-ph">Farben</h2>
@@ -1323,13 +1435,14 @@ function viewRules(keepScroll) {
   }));
   const rerun = () => { applySystem(); viewRules(true); };
   main.querySelector('[data-a="rules-edit"]').addEventListener('click', () => { rulesEdit = !rulesEdit; viewRules(true); });
+  main.querySelectorAll('[data-syscmp]').forEach(b => b.addEventListener('click', () => openSystemsCompare(b.dataset.syscmp)));
   main.querySelectorAll('[data-seg^="sys:"]').forEach(b => b.addEventListener('click', () => {
     const v = b.dataset.v;
     setPath(b.dataset.seg.slice(4), /^\d+$/.test(v) ? +v : v);
     rerun();
   }));
   main.querySelectorAll('[data-chip]').forEach(b => b.addEventListener('click', () => {
-    const path = b.dataset.chip, raw = b.dataset.v, v = /^\d+$/.test(raw) ? +raw : raw;
+    const path = b.dataset.chip, raw = b.dataset.v, v = /^-?\d+(\.\d+)?$/.test(raw) ? +raw : raw;
     const list = getPath(path).slice(), i = list.indexOf(v);
     if (i >= 0) { if (list.length > 1) list.splice(i, 1); } else list.push(v);
     list.sort((a, c) => (a === 'pill') - (c === 'pill') || a - c);
@@ -1423,7 +1536,7 @@ function applyTweaks(html, tw) {
 const snap = v => Math.round(v / U) * U;
 const visibleKids = p => [...p.children].filter(k => !/^(STYLE|SCRIPT)$/.test(k.tagName) && k.getClientRects().length && getComputedStyle(k).position !== 'absolute');
 const axisName = { row: 'waagerecht', column: 'senkrecht', grid: 'Raster', flow: 'untereinander' };
-const styleFamily = st => st.family || 'Inter';
+const styleFamily = st => st.family || Object.keys(S.families)[0];
 const ICON_LOCK = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
 function layoutInfo(el) {
@@ -2163,7 +2276,7 @@ function viewBuild(keep) {
       <button type="submit" class="b-go" aria-label="Erzeugen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     </form>
     ${F.live ? `<p class="b-live"><i></i>Verbunden mit Claude Code · Anfragen laufen über dein Konto</p>` : ''}
-    <p class="b-meta">${U}-px-Raster · Inset ${S.inset} · ${Object.keys(S.families).map(shortFam).join(' + ')} · max. ${S.limits.sizes} Größen</p>
+    <p class="b-meta">${esc(S.name)} · ${U > 1 ? `${U}-px-Raster` : 'Abstandsskala'} · Inset ${S.inset} · ${Object.keys(S.families).map(shortFam).join(' + ')} · max. ${S.limits.sizes} Größen</p>
     <div class="b-chips" id="b-chips">${F.components.map(c => `<button data-c="${esc(c.id)}">${esc(c.name)}</button>`).join('')}<label class="b-loop"><input type="checkbox" id="b-loop"${loopOn ? ' checked' : ''}><span>Endlos</span></label></div>
   </div>
 </section>`;
@@ -2270,7 +2383,7 @@ async function generate(prompt, { log, view = 'build', onStart } = {}) {
     }
   };
   try {
-    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID }) });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Der Server antwortet mit ${res.status}.`); }
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = '';
@@ -2556,7 +2669,7 @@ function viewCanvas() {
 /* ---------- Prüfbericht (für tools/check.mjs) ---------- */
 function writeReport() {
   const report = {
-    system: { version: S.version, unit: U, inset: S.inset, limits: S.limits },
+    system: { id: SYS_ID, name: S.name, version: S.version, unit: U, inset: S.inset, limits: S.limits },
     loadErrors: F.loadErrors,
     components: F.components.map(c => ({
       id: c.id, name: c.name,
@@ -2579,8 +2692,7 @@ function writeReport() {
 
 /* ---------- Start ---------- */
 async function fontsReady() {
-  const loads = ['400', '500', '600'].map(w => document.fonts.load(`${w} 16px "Inter"`))
-    .concat([document.fonts.load('400 16px "Libre Baskerville"'), document.fonts.load('italic 400 16px "Libre Baskerville"')]);
+  const loads = Object.keys(S.families).flatMap(f => ['400', '500', '600', '700'].map(w => document.fonts.load(`${w} 16px "${f}"`)).concat([document.fonts.load(`italic 400 16px "${f}"`)]));
   await Promise.race([Promise.allSettled(loads), sleep(4000)]);
   await Promise.race([document.fonts.ready, sleep(1000)]);
 }

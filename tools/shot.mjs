@@ -5,7 +5,7 @@
 //   node tools/shot.mjs music --layouts       alle Layouts nebeneinander
 //   node tools/shot.mjs --canvas              die ganze Fabrik (Übersicht)
 //   node tools/shot.mjs music --build         Bauen-Ansicht, Endzustand
-//   Optionen: --width=2000 --height=900 --scale=2 --web (Web-Bilder statt Platzhalter)
+//   Optionen: --width=2000 --height=900 --scale=2 --web (Web-Bilder statt Platzhalter) --system=zds
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { withPage, pageURL, ROOT } from './_chrome.mjs';
@@ -20,12 +20,13 @@ if (id) { p.set('c', id); p.set('solo', ''); }
 if (layout) p.set('l', layout);
 p.set('still', '');
 p.set('media', args.includes('--web') ? 'web' : 'none');
+if (opt('system')) p.set('system', opt('system'));
 const width = +(opt('width') || (view === 'layers' ? 2000 : view === 'layouts' ? 1320 : 1600));
 const fixedH = opt('height') ? +opt('height') : null;
 const scale = +(opt('scale') || 1);
 
 mkdirSync(path.join(ROOT, 'shots'), { recursive: true });
-const name = [id || 'alle', layout, view].filter(Boolean).join('-');
+const name = [id || 'alle', layout, view, opt('system')].filter(Boolean).join('-');
 const out = path.join(ROOT, 'shots', `${name}.png`);
 
 const errors = await withPage(pageURL(p.toString().replace(/=(&|$)/g, '$1')), async page => {

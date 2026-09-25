@@ -107,13 +107,13 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
     req.on('end', () => {
-      let prompt = '';
-      try { prompt = String(JSON.parse(body).prompt || '').trim(); } catch {}
+      let prompt = '', system = 'fabrik';
+      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; } catch {}
       if (!prompt) { res.writeHead(400); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
       const send = ev => { try { res.write(JSON.stringify(ev) + '\n'); } catch {} };
       console.log(`→ Claude: ${prompt}`);
-      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, onEvent: send });
+      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
         try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true }); } catch (e) { console.error('Verlauf:', e.message); }
@@ -134,10 +134,12 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/system' && req.method === 'POST') {
     readBody(req).then(b => {
-      if (!validSystem(b?.system)) return sendJSON(res, 400, { ok: false, error: 'Ungültiges Regelwerk' });
-      fs.writeFileSync(path.join(ROOT, 'factory', 'system.js'), renderSystemJS(b.system));
+      const sid = String(b?.id || b?.system?.id || '');
+      if (!/^[a-z0-9-]+$/.test(sid) || !fs.existsSync(path.join(ROOT, 'systems', sid, 'system.js'))) return sendJSON(res, 400, { ok: false, error: 'Unbekanntes Regelwerk' });
+      if (!validSystem(b.system)) return sendJSON(res, 400, { ok: false, error: 'Ungültiges Regelwerk' });
+      fs.writeFileSync(path.join(ROOT, 'systems', sid, 'system.js'), renderSystemJS({ ...b.system, id: sid }));
       console.log(`§ Regeln übernommen (System v${b.system.version})`);
-      history.commitNow(`Regeln: ${String(b.message || 'angepasst').slice(0, 100)} (System v${b.system.version})`);
+      history.commitNow(`Regeln: ${String(b.message || 'angepasst').slice(0, 90)} (${sid} v${b.system.version})`);
       sendJSON(res, 200, { ok: true });
     });
     return;
@@ -193,5 +195,7 @@ server.listen(PORT, '127.0.0.1', () => console.log(`Component Factory: http://lo
 let timer;
 // Während Claude arbeitet, nicht neu laden – erst wenn die Anfrage fertig ist.
 const ping = () => { history.schedule(null, 3000); if (job) { pendingPing = true; return; } clearTimeout(timer); timer = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150); };
+for (const dir of ['components', 'factory', 'media', 'systems']) fs.mkdirSync(path.join(ROOT, dir), { recursive: true });
 for (const dir of ['components', 'factory', 'media']) fs.watch(path.join(ROOT, dir), (_, name) => { if (!name || name.startsWith('.')) return; if ((muted.get(name) || 0) > Date.now()) return; ping(); });
 fs.watch(ROOT, (_, name) => { if (name === 'index.html') ping(); });
+fs.watch(path.join(ROOT, 'systems'), { recursive: true }, (_, name) => { if (!name || name.includes('fonts') || name.startsWith('.')) return; ping(); });

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Bereitet die Fabrik als claude.ai-Artifact vor: dist/artifact.html (ohne html/head/body – die setzt die Plattform)
 // und dist/_index.js mit allen Komponenten, deren Datei existiert. Gibt die Dateiliste für die Veröffentlichung aus.
+// Lizenzschriften (systems/*/fonts/) werden nie mit veröffentlicht; dort greifen die Ersatzschriften.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './_chrome.mjs';
@@ -21,8 +22,9 @@ const ids = listed.filter(id => existsSync(path.join(ROOT, 'components', `${id}.
 writeFileSync(path.join(dist, '_index.js'), `Factory.load(${JSON.stringify(ids)});\n`);
 
 const files = {
-  'factory/system.js': 'factory/system.js',
-  'factory/system.css': 'factory/system.css',
+  'systems/_systems.js': 'systems/_systems.js',
+  ...Object.fromEntries(readdirSync(path.join(ROOT, 'systems'), { withFileTypes: true }).filter(d => d.isDirectory()).flatMap(d => ['system.js', 'system.css', 'fonts.css']
+    .filter(f => existsSync(path.join(ROOT, 'systems', d.name, f))).map(f => [`systems/${d.name}/${f}`, `systems/${d.name}/${f}`]))),
   'factory/factory.css': 'factory/factory.css',
   'factory/factory.js': 'factory/factory.js',
   'components/_index.js': 'dist/_index.js',

@@ -22,6 +22,12 @@ Das startet die Seite mit Live-Reload und verbindet die Eingabezeile mit deinem 
 - **Fabrik**: alle Layouts auf einer Fläche, mit Kamerafahrt. Ziehen verschiebt, ⌘ + Scrollen zoomt.
 - **Regeln**: alle Gestaltungsregeln mit Beispielen und wie viele Layouts sie erfüllen, dazu Schriftskala, Textstile, Farben, Abstände, Radien. **Regeln anpassen** macht Werte und Texte editierbar: Jede Änderung misst sofort alle Layouts neu und zeigt, was brechen würde. **Übernehmen** speichert in `factory/system.js`, **Verwerfen** stellt den alten Stand her. Für neue, noch nicht gemessene Regeln baut Claude auf Knopfdruck eine Prüfung; Verstöße lässt du von Claude beheben.
 
+## Regelwerke: Fabrik und ZDS
+
+Oben rechts schaltest du zwischen zwei Regelwerken um. **Fabrik** ist das 8-px-System dieses Experiments. **ZDS** ist das ZEIT Design System: Tablet Gothic und Zeit Tiemann Schmal, Farben, Grade, Zeilenhöhen, Radien und Abstände aus dem öffentlichen Paket `@zeitonline/design-system`, dazu die Vorgaben „keine dunklen Flächen“ und „Tiemann nur für Überschriften“. Dieselben Komponenten erscheinen dann in ZDS und werden nach dessen Regeln gemessen. In „Regeln“ vergleicht **Mit ZDS vergleichen** beide Systeme nebeneinander; `node tools/check.mjs --system zds` prüft im Terminal.
+
+Die ZEIT-Schriften liegen nur lokal in `systems/zds/fonts/` (Lizenz, nicht im Repository). Fehlen sie, zeigt ZDS Ersatzschriften.
+
 ## Verlauf
 
 Jede Änderung wird automatisch gespeichert, egal ob sie von dir, vom Feinschliff oder von Claude kommt. Der Ordner ist dafür ein Git-Repository. Oben rechts unter **Verlauf** siehst du alle Änderungen. **Rückgängig** oder ⌘Z nimmt die letzte zurück, **Hierhin zurück** stellt einen früheren Stand komplett wieder her. Auch das Zurücknehmen lässt sich wieder zurücknehmen. **Vergleichen** zeigt vorher und nachher nebeneinander, markiert die geänderten Layouts und scrollt dorthin – nach einer Claude-Änderung auch direkt über „Vorher / Nachher“.
