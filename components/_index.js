@@ -13,4 +13,5 @@ Factory.load([
   'reading',
   'video',
   'flight',
+  'stock',
 ]);
