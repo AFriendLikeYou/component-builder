@@ -4,7 +4,7 @@
     const hA = (z.h % 12) * 30 + z.m * 0.5 + z.s / 120;
     const mA = z.m * 6 + z.s * 0.1;
     const sA = z.s * 6;
-    const ink = dark ? '#f4f4f5' : '#1b2029';
+    const ink = dark ? 'var(--c-on-dark)' : 'var(--c-ink)';
     const tick = dark ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.28)';
     let ticks = '';
     for (let i = 0; i < 60; i++) {
@@ -19,7 +19,7 @@
     }).join('') : '';
     const hand = (angle, dur, body) => `<g transform="rotate(${angle} 100 100)"><g class="cf-spin" style="--dur:${dur}s">${body}</g></g>`;
     return `<svg width="${size}" height="${size}" viewBox="0 0 200 200" style="display:block">
-      <circle cx="100" cy="100" r="99" fill="${dark ? '#1b2029' : '#f5f5f3'}"/>
+      <circle cx="100" cy="100" r="99" fill="${dark ? 'var(--c-dark)' : 'var(--c-fill)'}"/>
       <circle cx="100" cy="100" r="98.5" fill="none" stroke="${dark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)'}"/>
       ${ticks}${nums}
       ${hand(hA, 43200, `<line x1="100" y1="112" x2="100" y2="56" stroke="${ink}" stroke-width="7" stroke-linecap="round"/>`)}
@@ -54,7 +54,7 @@
     },
     css: `
       .wc { display: flex; flex-direction: column; gap: 16px; height: 100%; }
-      .wc-faces { display: grid; grid-template-columns: repeat(3, 96px); gap: 8px; }
+      .wc-faces { display: grid; grid-template-columns: repeat(3, 96px); gap: 8px; justify-content: space-between; }
       .wc-col { display: flex; flex-direction: column; align-items: center; }
       .wc-col svg { margin-bottom: 8px; border-radius: 50%; box-shadow: 0 8px 16px -8px rgba(0,0,0,.18); }
       .wc-rows { display: flex; flex-direction: column; gap: 16px; }
