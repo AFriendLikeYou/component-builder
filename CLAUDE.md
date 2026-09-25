@@ -80,6 +80,10 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 
 „In den Code einarbeiten“ heißt: `el`, `text`, `height` sauber in `components/<id>.js` übernehmen (CSS in `css`, Reihenfolge im Markup oder in `data`, Texte in `data`), Notizen erledigen, danach in der Datei für dieses Layout nur `locks` und `exceptions` stehen lassen. Das Ergebnis muss genauso aussehen wie vorher mit Feinschliff.
 
+## Varianten und Präferenzen
+
+Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert. `idea` erklärt in zwei Sätzen, was sich ändert und warum. `feedback/praeferenzen.js` sammelt, welche Varianten das Team behalten oder verworfen hat, mit Kommentar – lies die Datei vor jeder neuen Variante und richte dich danach.
+
 ## Sonst
 
 - Vorschau: `open index.html` oder `node tools/serve.mjs` (http://localhost:4173, lädt bei jeder Änderung neu, verbindet die Eingabezeile mit Claude Code).

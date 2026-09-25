@@ -144,6 +144,25 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/feedback' && req.method === 'POST') {
+    readBody(req).then(b => {
+      if (!b || !validId(b.c) || typeof b.l !== 'string' || !['behalten', 'verworfen'].includes(b.decision)) return sendJSON(res, 400, { ok: false });
+      const file = path.join(ROOT, 'feedback', 'praeferenzen.js');
+      let list = [];
+      try { const m = fs.readFileSync(file, 'utf8').match(/window\.CF_FEEDBACK = (\[[\s\S]*\]);/); if (m) list = JSON.parse(m[1]); } catch {}
+      list.push({ when: new Date().toISOString().slice(0, 10), system: String(b.system || '').slice(0, 20), c: b.c, l: b.l.slice(0, 60), variantOf: b.variantOf || null, direction: b.direction || null, decision: b.decision, comment: String(b.comment || '').slice(0, 300) });
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `// Präferenzen des Teams: behaltene und verworfene Varianten mit Kommentar. Claude liest das, bevor es neue Varianten baut.\nwindow.CF_FEEDBACK = ${JSON.stringify(list, null, 2)};\n`);
+      history.schedule(`Präferenz: ${b.c}/${b.l} ${b.decision}`);
+      console.log(`♥ Präferenz: ${b.c}/${b.l} ${b.decision}${b.comment ? ` – ${b.comment}` : ''}`);
+      sendJSON(res, 200, { ok: true });
+    });
+    return;
+  }
+  if (url.pathname === '/feedback/praeferenzen.js' && !fs.existsSync(path.join(ROOT, 'feedback', 'praeferenzen.js'))) {
+    res.writeHead(200, { 'Content-Type': TYPES['.js'], 'Cache-Control': 'no-store' });
+    return res.end('window.CF_FEEDBACK = [];');
+  }
   if (url.pathname === '/api/text' && req.method === 'POST') {
     readBody(req).then(b => {
       if (!b || !validId(b.id)) return sendJSON(res, 400, { ok: false });

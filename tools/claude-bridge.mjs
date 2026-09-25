@@ -14,7 +14,7 @@ export function claudeAvailable() {
 }
 
 const SYSTEM = `Du wirst aus der Oberfläche der Component Factory aufgerufen (Eingabezeile „Bauen“ oder Bearbeiten-Modus). Der Nutzer sieht deine Arbeitsschritte live mit.
-Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk (Datei steht unten). Lies components/<id>.tweaks.js, falls vorhanden: gesperrte Flächen (locks) nie verändern.
+Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk (Datei steht unten). Lies components/<id>.tweaks.js, falls vorhanden: gesperrte Flächen (locks) nie verändern, akzeptierte Ausnahmen (exceptions) nicht beheben. Lies feedback/praeferenzen.js, falls vorhanden.
 - Neue Komponente gewünscht: components/<id>.js mit drei Layouts anlegen und die id in components/_index.js eintragen.
 - Änderung an einer bestehenden Komponente, einem Layout oder einer Regel: nur das Nötige ändern. Änderungen aus dem Bearbeiten-Modus (Auto-Layout) sind verbindlich: Reihenfolge, feste Größen und gap als Struktur im Code umsetzen (Markup/data, width/height, gap), nie mit absoluten Positionen oder translate; danach nicht mehr im Raster liegende Flächen ausgleichen.
 - Danach immer: node tools/check.mjs <id> bis alles ✓ ist. Dann den Screenshot NEU erzeugen (node tools/shot.mjs <id> --layouts; PNGs in shots/ von vorher sind veraltet), ansehen und offensichtliche optische Fehler beheben.

@@ -78,6 +78,7 @@ F.load = async ids => {
     else await addScript(`components/${id}.tweaks.js${bust}`);
   }
   await addScript(`media/_media.js${bust}`);
+  await addScript(`feedback/praeferenzen.js${bust}`);
   boot();
 };
 
@@ -1137,12 +1138,89 @@ function viewLayers() {
 }
 
 /* ---------- Ansicht: Layouts ---------- */
+/* ---------- Varianten gezielt erzeugen ---------- */
+const DIRECTIONS = [
+  { id: 'kompakter', name: 'Kompakter', desc: 'weniger Höhe, dichtere Abstände, nur das Nötigste bleibt sichtbar' },
+  { id: 'editorialer', name: 'Editorialer', desc: 'mehr Ruhe und Lesefluss, die Überschrift in der Überschriften- oder Akzentschrift, Bild und Text wie ein Teaser' },
+  { id: 'hierarchischer', name: 'Stärker hierarchisiert', desc: 'eine klare Hauptinformation, deutliche Größenunterschiede, Nebensachen zurückgenommen' },
+  { id: 'mobil', name: 'Mobil · 320 px', desc: 'für schmale Bildschirme: width 320, einspaltig, große Trefferflächen' },
+  { id: 'ruhiger', name: 'Ruhiger', desc: 'weniger Elemente, weniger Farbe, mehr Weißraum' },
+  { id: 'bildstaerker', name: 'Bildstärker', desc: 'das Bild führt: größer oder randabfallend, Text knapp darunter oder darauf' },
+];
+const dirName = id => DIRECTIONS.find(d => d.id === id)?.name || id || 'Variante';
+const feedbackFor = (cid, lid) => (window.CF_FEEDBACK || []).filter(f => f.c === cid && f.l === lid);
+function variantDecisionHTML(c, l) {
+  const f = feedbackFor(c.id, l.id).pop();
+  if (f) return `<p class="cf-vardone">${f.decision === 'behalten' ? 'Behalten' : 'Verworfen'}${f.comment ? ` – ${esc(f.comment)}` : ''}</p>`;
+  return `<div class="cf-vardec"><button type="button" class="cf-btn" data-vardec="behalten" data-c="${esc(c.id)}" data-l="${esc(l.id)}">${icon('check', 14)}Behalten</button><button type="button" class="cf-btn" data-vardec="verworfen" data-c="${esc(c.id)}" data-l="${esc(l.id)}">${icon('close', 14)}Verwerfen</button></div>`;
+}
+function variantPrompt(c, l, dir, note) {
+  const d = DIRECTIONS.find(x => x.id === dir);
+  const nid = `${l.id}-${dir}`;
+  return `Variante erzeugen: Komponente „${c.name}“ (components/${c.id}.js), ausgehend vom Layout „${l.name}“ (id ${l.id}). Richtung: ${d.name.toLowerCase()} – ${d.desc}.${note ? `\nWorauf achten: ${note}` : ''}
+Füge ein NEUES Layout hinzu, das Ausgangslayout bleibt unverändert: id „${nid}“ (falls vergeben, eine freie id), name „${l.name} · ${d.name}“, variantOf: „${l.id}“, direction: „${dir}“. Gleiche Daten, gleiche Regeln des aktiven Regelwerks.
+Schreib in idea zwei kurze Sätze: was die Variante anders macht als „${l.name}“ und warum das der Richtung dient – konkret, z. B. „Nutzt die Breite besser und hält die Textkante konsistent.“
+Berücksichtige feedback/praeferenzen.js, falls vorhanden (was das Team bisher behalten oder verworfen hat). Die Variante muss die Prüfung bestehen.`;
+}
+function bindVariant(sec, c) {
+  const bar = sec.querySelector('.cf-varbar');
+  sec.querySelector('[data-act="variant"]')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!bar.hidden) { bar.hidden = true; btn.classList.remove('on'); return; }
+    bar.hidden = false;
+    btn.classList.add('on');
+    const base = c.layouts.filter(l => !l.variantOf);
+    bar.innerHTML = `<div class="cf-varrow"><span class="ed-lab">Ausgehend von</span>${seg('vbase', base[0]?.id, base.map((l, i) => [l.id, `${pad2(i + 1)} ${esc(l.name)}`]))}</div>
+      <div class="cf-varrow"><span class="ed-lab">Richtung</span>${seg('vdir', 'kompakter', DIRECTIONS.map(d => [d.id, esc(d.name), d.desc]))}</div>
+      <div class="cf-varrow"><span class="ed-lab">Worauf achten</span><input id="cf-varnote-${esc(c.id)}" placeholder="optional, z. B. „Uhrzeit bleibt groß“" aria-label="Worauf achten"></div>
+      <div class="cf-varrow"><span class="ed-lab"></span><button type="button" class="cf-btn is-primary" data-a="var-go">${F.live ? 'Variante von Claude bauen lassen' : 'Anweisung für Claude'}</button><span class="cf-varhint">Gleiche Daten, gleiche Regeln – die Variante erscheint als neues Layout daneben.</span></div>
+      <div class="b-log ed-log cf-varlog"></div>`;
+    bar.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => bar.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach(x => x.classList.toggle('on', x === b))));
+    bar.querySelector('[data-a="var-go"]').addEventListener('click', () => {
+      const pick = k => bar.querySelector(`[data-seg="${k}"].on`)?.dataset.v;
+      const l = c.layouts.find(x => x.id === pick('vbase')) || base[0];
+      const prompt = variantPrompt(c, l, pick('vdir') || 'kompakter', bar.querySelector('input').value.trim());
+      const log = bar.querySelector('.cf-varlog');
+      if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
+      bar.querySelectorAll('button, input').forEach(x => { x.disabled = true; });
+      generate(prompt, { log, view: 'layouts' });
+    });
+  });
+}
+// Behalten / Verwerfen: als Präferenz festhalten (feedback/praeferenzen.js), Verwerfen entfernt das Layout über Claude
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-vardec]');
+  if (!b) return;
+  const box = b.closest('.cf-vardec');
+  if (box.querySelector('.f-form')) return;
+  const { vardec, c, l } = b.dataset;
+  box.insertAdjacentHTML('beforeend', `<form class="f-form"><input id="cf-vcom-${Date.now()}" placeholder="${vardec === 'behalten' ? 'Was ist daran gut?' : 'Was passt nicht?'} (optional)" aria-label="Kommentar"><button type="submit" class="cf-btn is-primary">${vardec === 'behalten' ? 'Behalten' : 'Verwerfen'}</button></form>`);
+  const form = box.querySelector('.f-form');
+  form.querySelector('input').focus();
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const comp = F.byId[c], lay = comp.layouts.find(x => x.id === l);
+    const entry = { system: SYS_ID, c, l, direction: lay.direction || null, variantOf: lay.variantOf || null, decision: vardec, comment: form.querySelector('input').value.trim() };
+    window.CF_FEEDBACK = [...(window.CF_FEEDBACK || []), { ...entry, when: new Date().toISOString().slice(0, 10) }];
+    if (F.live) { try { await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {} }
+    if (vardec === 'verworfen' && F.live) {
+      const log = document.createElement('div');
+      log.className = 'b-log ed-log';
+      box.replaceWith(log);
+      generate(`Die Variante „${lay.name}“ (id ${l}) in components/${c}.js wurde verworfen${entry.comment ? ` („${entry.comment}“)` : ''}. Entferne genau dieses Layout, sonst nichts ändern. Prüfe mit node tools/check.mjs ${c}.`, { log, view: 'layouts' });
+      return;
+    }
+    box.outerHTML = variantDecisionHTML(comp, lay);
+  });
+});
+
 function layGridHTML(c, scen) {
   return c.layouts.map((l, i) => {
     const sb = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => measureTemp(c, l)) : null;
     const card = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => cardHTML(c, l)) : cardHTML(c, l);
     return `<figure class="cf-lay-item" data-c="${esc(c.id)}" data-li="${i}">
-    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
+    <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${l.variantOf ? `<em class="cf-varchip" title="Variante von ${esc(l.variantOf)}">${esc(dirName(l.direction))}</em>` : ''}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
+    ${l.variantOf && !sb && !state.solo ? variantDecisionHTML(c, l) : ''}
     <div class="cf-lay-card">${card}</div>
     ${sb && sb.violations.length ? `<ul class="cf-sviol">${sb.violations.map(v => `<li><code>${esc(v.rule)}</code>${esc(v.msg)}</li>`).join('')}</ul>` : l.idea && !sb ? `<p>${esc(l.idea)}</p>` : ''}
   </figure>`;
@@ -1221,15 +1299,16 @@ function viewLayouts() {
   main.innerHTML = `<div class="v-layouts">${errorsHTML()}${list.length ? list.map(c => {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
-  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button>`}</header>
+  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button>`}</header>
   <ul class="cf-viol">${findingsItems(bps, true)}</ul>
   <div class="cf-stressbar" hidden></div>
+  <div class="cf-varbar" hidden></div>
   <div class="cf-lay-grid">${layGridHTML(c)}</div>
 </section>`;
   }).join('') : emptyHTML()}</div>`;
   main.querySelectorAll('.cf-lay [data-act="viol"]').forEach(b => b.addEventListener('click', () => b.closest('.cf-lay').classList.toggle('show-viol')));
   bindLayItems(main);
-  main.querySelectorAll('.cf-lay').forEach(sec => bindStress(sec, F.byId[sec.id.slice(4)]));
+  main.querySelectorAll('.cf-lay').forEach(sec => { bindStress(sec, F.byId[sec.id.slice(4)]); bindVariant(sec, F.byId[sec.id.slice(4)]); });
   if (state.solo) main.querySelectorAll('.cf-lay').forEach(r => r.classList.add('show-viol'));
   else if (state.c) requestAnimationFrame(() => document.getElementById(`lay-${state.c}`)?.scrollIntoView({ block: 'start' }));
   const ro = takeReopen();
@@ -1391,6 +1470,18 @@ function checkPrompt(rule) {
 Ergänze dazu in measure() in factory/factory.js eine Messung mit V('<kürzel>', '<Meldung auf Deutsch>') und trage das Kürzel in checks dieser Regel in ${SYS_JS} ein. Die Messung soll am gerenderten DOM arbeiten wie die übrigen. Lass danach node tools/check.mjs laufen und berichte, welche Komponenten die neue Regel verletzen – ändere die Komponenten selbst noch nicht.`;
 }
 
+function prefsHTML() {
+  const fb = window.CF_FEEDBACK || [];
+  if (!fb.length) return '<p class="rs-pn">Noch keine Entscheidungen. Behalte oder verwirf Varianten in „Layouts“ – daraus lernt Claude, welche Richtungen ihr mögt.</p>';
+  const by = new Map();
+  fb.forEach(e => { const k = e.direction || 'ohne Richtung'; const x = by.get(k) || { keep: 0, drop: 0 }; e.decision === 'behalten' ? x.keep++ : x.drop++; by.set(k, x); });
+  const rows = [...by].sort((a, b) => (b[1].keep - b[1].drop) - (a[1].keep - a[1].drop));
+  const notes = fb.filter(e => e.comment).slice(-5).reverse();
+  return `<p class="rs-pn">${fb.length} Entscheidungen zu Varianten. Claude liest sie (<code>feedback/praeferenzen.js</code>), bevor es neue baut.</p>
+    <div class="rs-prefs">${rows.map(([k, x]) => `<div class="rs-pref"><b>${esc(dirName(k))}</b><span class="is-ok">${x.keep} behalten</span><span class="is-bad">${x.drop} verworfen</span></div>`).join('')}</div>
+    ${notes.length ? `<ul class="rs-prefnotes">${notes.map(e => `<li><span class="${e.decision === 'behalten' ? 'is-ok' : 'is-bad'}">${e.decision === 'behalten' ? 'behalten' : 'verworfen'}</span> ${esc(F.byId[e.c]?.name || e.c)} · ${esc(dirName(e.direction))}: „${esc(e.comment)}“</li>`).join('')}</ul>` : ''}`;
+}
+
 function viewRules(keepScroll) {
   const y = scrollY;
   if (OK0.total == null || !systemDiff().length) Object.assign(OK0, layoutCounts());
@@ -1475,6 +1566,10 @@ function viewRules(keepScroll) {
     <div class="rs-panel">
       <h2 class="rs-ph">Radien</h2>
       ${ruleFigure({ fig: 'radii', checks: [] }, ex)}
+    </div>
+    <div class="rs-panel rs-wide">
+      <h2 class="rs-ph">Präferenzen des Teams</h2>
+      ${prefsHTML()}
     </div>
     <div class="rs-panel rs-wide">
       <h2 class="rs-ph">Farben</h2>

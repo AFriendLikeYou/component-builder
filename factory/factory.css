@@ -592,3 +592,21 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 .rs-level { padding: 1px 6px; border-radius: 4px; }
 .rs-level.is-muss { background: #f0f0ee; color: var(--ink-2); }
 .rs-level.is-soll { background: #fbf0dc; color: #8a5a12; }
+
+/* Varianten */
+.cf-var-btn.on { background: var(--ink); color: #fff; box-shadow: none; }
+.cf-varbar { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding: 16px; border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
+.cf-varrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.cf-varrow .ed-lab { width: 112px; }
+.cf-varrow input { flex: 1; min-width: 220px; max-width: 480px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: #f4f4f2; font: 12px/1 var(--ui); color: var(--ink); }
+.cf-varrow .ed-seg { flex-wrap: wrap; }
+.cf-varhint { font-size: 12px; color: var(--ink-3); }
+.cf-varchip { margin-left: 4px; padding: 0 8px; border-radius: 999px; background: #eef3fd; color: #2556b8; font: 500 11px/20px var(--ui); font-style: normal; white-space: nowrap; }
+.cf-vardec { width: 0; min-width: 100%; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cf-vardone { width: 0; min-width: 100%; margin: 12px 0 0; font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.rs-prefs { display: flex; flex-wrap: wrap; gap: 8px; }
+.rs-pref { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border-radius: 10px; background: #f4f4f2; font-size: 12px; }
+.rs-pref b { font-weight: 500; }
+.rs-pref .is-ok, .rs-prefnotes .is-ok { color: var(--ok); }
+.rs-pref .is-bad, .rs-prefnotes .is-bad { color: var(--bad); }
+.rs-prefnotes { list-style: none; margin: 12px 0 0; padding: 0; font-size: 12px; line-height: 20px; color: var(--ink-2); }
