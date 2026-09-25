@@ -6,11 +6,12 @@
     empty: { icon: 'volume', title: 'Gerade läuft nichts', text: 'Lust auf einen Mix?', teaser: ['Gerade läuft nichts', 'Lust auf einen Mix?'], action: 'Mix starten', actIcon: 'shuffle', w: 112 },
     error: { icon: 'close', title: 'Keine Verbindung', text: 'Wiedergabe gestoppt', teaser: ['Wiedergabe gestoppt', 'Keine Verbindung'], action: 'Erneut versuchen', actIcon: 'refresh', w: 152, error: true },
   };
+  const MAX = 4; // Titel in der Warteschlange
   const sk = (lh, w) => `<span class="mu-sk" style="height:${lh}px;--w:${w}"></span>`;
   const tile = (h, m, cls, area, { size = 24, bleed } = {}) =>
     `<div class="${cls} mu-tile${m && m.error ? ' is-error' : ''}"${bleed ? ' data-bleed' : ''}${area ? ` data-area="${area}"` : ''}>${m ? h.icon(m.icon, size) : ''}</div>`;
-  const act = (h, m, narrow) => `<div class="mu-acts" data-area="control:aktion"${narrow ? ` style="width:${m.w}px"` : ''}><button class="btn-pill mu-act">${narrow ? '' : h.icon(m.actIcon, 16)}${m.action}</button></div>`;
-  const track = p => `<div class="mu-track">${p == null ? '' : `<div class="mu-fill" style="width:${p * 100}%"></div>`}</div>`;
+  const act = (h, m, narrow) => `<div class="mu-acts" data-area="control:aktion"${narrow ? ` style="width:${m.w}px"` : ''}><button class="btn-pill lg solid w-500${narrow ? ' t-14' : ''} mu-act">${narrow ? '' : h.icon(m.actIcon, 16)}${m.action}</button></div>`;
+  const track = p => `<div class="progress mu-track" style="--p: ${p == null ? 0 : p}"><i></i></div>`;
 
   Factory.register({
     id: 'music',
@@ -34,24 +35,23 @@
     },
     css: `
       .mu-bar { height: 8px; display: flex; align-items: center; }
-      .mu-track { flex: 1; height: 4px; border-radius: 999px; background: var(--c-fill-2); overflow: hidden; transition: height .15s; }
-      .mu-fill { height: 100%; border-radius: 999px; background: var(--c-ink); }
-      .btn-round.mu-ghost { background: none; transition: background-color .15s; }
+      .mu-track { flex: 1; }
+      .mu-track > i { transition: background-color .15s; }
+      .btn-round.ghost { transition: background-color .15s; }
       .btn-round.solid, .mu-act { transition: box-shadow .15s; }
 
-      .mu-c { display: grid; grid-template-columns: 88px 1fr; grid-template-rows: 48px 40px 24px 40px; column-gap: 16px; height: 100%; }
+      .mu-c { display: grid; grid-template-columns: 88px minmax(0, 1fr); grid-template-rows: 48px 40px 24px 40px; column-gap: 16px; height: 100%; }
       .mu-c .mu-cover { grid-row: 1 / span 2; border-radius: 8px; }
       .mu-c .mu-ctl { grid-column: 2; grid-row: 2; }
       .mu-c .mu-prog { grid-column: 1 / -1; grid-row: 4; display: flex; flex-direction: column; gap: 16px; }
       .mu-c .mu-acts { grid-column: 1 / -1; grid-row: 4; }
 
-      .mu-a { display: grid; grid-template-rows: 288px 24px 48px 16px 8px; height: 100%; }
+      .mu-a { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 288px 24px 48px 16px 8px; height: 100%; }
       .mu-a .mu-hero { grid-row: 1; }
       .mu-a .mu-row { grid-row: 3; display: flex; gap: 16px; padding: 0 24px; }
       .mu-a .mu-bar { grid-row: 5; margin: 0 24px; }
-      .mu-a .btn-round, .mu-a .mu-dot { width: 48px; height: 48px; }
+      .mu-a .mu-dot { width: 48px; height: 48px; }
       .mu-a .mu-acts { grid-row: 2 / span 4; margin: 0 24px; display: flex; align-items: center; }
-      .mu-a .mu-act { height: 48px; }
       .mu-note { width: calc(100% - 48px); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
 
       .mu-q { display: flex; flex-direction: column; gap: 16px; }
@@ -59,6 +59,7 @@
       .mu-item { position: relative; height: 48px; display: flex; align-items: center; gap: 16px; }
       .mu-item :is(.cf-media, .mu-tile) { width: 48px; height: 48px; border-radius: 8px; flex: none; }
       .mu-item.is-now .mu-name { color: var(--c-accent); }
+      .mu-more { height: 48px; }
       .mu-ov { position: absolute; left: 0; top: 0; width: 48px; height: 48px; border-radius: 8px; display: none; place-items: center; background: color-mix(in srgb, var(--c-ink) 48%, transparent); color: var(--c-surface); }
       .mu-none { height: 216px; align-items: center; justify-content: center; gap: 16px; text-align: center; }
       .mu-none .mu-badge { width: 48px; height: 48px; border-radius: 999px; }
@@ -68,7 +69,7 @@
       .mu-z { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 16px; align-items: center; height: 48px; }
       .mu-z .mu-cover { width: 48px; height: 48px; border-radius: 8px; }
       .mu-z .mu-mid { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-      .mu-z .btn-round, .mu-z .mu-dot { width: 48px; height: 48px; }
+      .mu-z .mu-dot { width: 48px; height: 48px; }
       .mu-z.is-msg { grid-template-columns: minmax(0, 1fr) auto; }
       .mu-z .mu-acts { height: 48px; display: flex; align-items: center; }
 
@@ -88,13 +89,13 @@
       .mu-tile.is-error { background: var(--c-warm-soft); }
       .mu-tile .icon { color: var(--c-ink-3); }
       .mu-tile.is-error .icon { color: var(--c-warm); }
-      .mu-act { width: 100%; height: 40px; justify-content: center; background: var(--c-ink); color: var(--c-surface); font-weight: 500; }
+      .mu-act { width: 100%; justify-content: center; white-space: nowrap; }
       :is(.mu-t, .mu-none) .mu-act { width: auto; }
 
       /* Hover: Bedienbares tritt hervor */
-      &:is(:hover, .is-hover) .btn-round.mu-ghost { background: var(--c-fill); }
+      &:is(:hover, .is-hover) .btn-round.ghost { background: var(--c-fill); }
       &:is(:hover, .is-hover) :is(.btn-round.solid, .mu-act) { box-shadow: 0 0 0 4px var(--c-fill-2); }
-      &:is(:hover, .is-hover) .mu-track { height: 8px; }
+      &:is(:hover, .is-hover) .mu-track > i { background: var(--c-accent); }
       &:is(:hover, .is-hover) .mu-head { text-decoration-line: underline; }
       .mu-item:hover .mu-ov, &.is-hover .mu-item:nth-child(2) .mu-ov { display: grid; }
     `,
@@ -126,9 +127,9 @@
               </div>
               <div class="mu-ctl row g-8" data-area="control:steuerung">
                 ${load ? '<span class="mu-dot"></span>'.repeat(3) : `
-                <button class="btn-round mu-ghost" aria-label="Zurück">${h.icon('prev', 20)}</button>
+                <button class="btn-round ghost" aria-label="Zurück">${h.icon('prev', 20)}</button>
                 <button class="btn-round solid" aria-label="Pause">${h.icon('pause', 18)}</button>
-                <button class="btn-round mu-ghost" aria-label="Weiter">${h.icon('next', 20)}</button>`}
+                <button class="btn-round ghost" aria-label="Weiter">${h.icon('next', 20)}</button>`}
               </div>
               <div class="mu-prog" data-area="meta:fortschritt">
                 <div class="mu-bar">${track(load ? null : d.progress)}</div>
@@ -170,7 +171,7 @@
                   <p class="t-14 ink-2 clip">${h.esc(d.artist)}</p>`}
                 </div>
                 <div data-area="control:abspielen">
-                  ${load ? '<span class="mu-dot"></span>' : `<button class="btn-round solid" aria-label="Pause">${h.icon('pause', 20)}</button>`}
+                  ${load ? '<span class="mu-dot"></span>' : `<button class="btn-round lg solid" aria-label="Pause">${h.icon('pause', 20)}</button>`}
                 </div>
               </div>
               <div class="mu-bar" data-area="meta:fortschritt">${track(load ? null : d.progress)}</div>
@@ -186,6 +187,8 @@
         render: (d, h) => {
           const load = h.state === 'loading';
           const m = MSG[h.state] || (!load && !d.queue.length ? MSG.empty : null);
+          // mehr als MAX Titel: drei zeigen, dazu „3 von 12 Titeln · Alle anzeigen“ in derselben Höhe
+          const shown = d.queue.length > MAX ? d.queue.slice(0, MAX - 1) : d.queue;
           const count = load ? sk(16, '48px') : m && m.error ? '' : `<p class="t-12 ink-2">${m ? 0 : d.queue.length} Titel</p>`;
           const list = m ? `
             <div class="mu-list mu-none" data-area="text:liste">
@@ -207,7 +210,7 @@
             </div>`
             : `
             <div class="mu-list" data-area="text:liste">
-              ${d.queue.map((q, i) => `
+              ${shown.map((q, i) => `
                 <div class="mu-item${i === 0 ? ' is-now' : ''}" data-area="text:titel-${i + 1}">
                   ${h.media(i)}
                   <span class="mu-ov">${h.icon(i === 0 ? 'pause' : 'play', 16)}</span>
@@ -217,6 +220,11 @@
                   </div>
                   <p class="t-12 ink-2 num">${i === 0 ? d.elapsed : q.dur}</p>
                 </div>`).join('')}
+              ${shown.length < d.queue.length ? `
+              <div class="row between mu-more" data-area="control:alle">
+                <p class="t-12 ink-2">${shown.length} von ${d.queue.length} Titeln</p>
+                <button class="btn-text t-14 w-500">Alle anzeigen</button>
+              </div>` : ''}
             </div>`;
           return `
             <div class="mu-q">
@@ -256,7 +264,7 @@
                 <div class="mu-bar" data-area="meta:fortschritt">${track(load ? null : d.progress)}</div>
               </div>
               <div data-area="control:abspielen">
-                ${load ? '<span class="mu-dot"></span>' : `<button class="btn-round solid" aria-label="Pause">${h.icon('pause', 20)}</button>`}
+                ${load ? '<span class="mu-dot"></span>' : `<button class="btn-round lg solid" aria-label="Pause">${h.icon('pause', 20)}</button>`}
               </div>
             </div>`;
         },
