@@ -49,14 +49,15 @@ globalThis.CF = (() => {
       let v = all.find(x => x.variableCollectionId === col.id && x.name === vn);
       if (!v) v = figma.variables.createVariable(vn, col, 'COLOR');
       v.setValueForMode(mode, { ...rgb(t.hex), a: t.a });
-      map[t.name] = { v, a: t.a };
+      map[t.name] = { v, a: t.a, hex: t.hex.toLowerCase() };
     }
     return map;
   }
   function paint(c, V) {
     if (!c) return null;
     const tok = c.token && V[c.token];
-    if (!tok) return { type: 'SOLID', color: rgb(c.hex), opacity: c.a };
+    // Farbe deckender als der Token? Dann nicht binden – Deckkraft über 100 % geht nicht.
+    if (!tok || c.a > tok.a + .01) return { type: 'SOLID', color: rgb(c.hex), opacity: c.a };
     const p = { type: 'SOLID', color: rgb(c.hex), opacity: tok.a ? Math.min(1, c.a / tok.a) : c.a };
     return figma.variables.setBoundVariableForPaint(p, 'color', tok.v);
   }
@@ -108,13 +109,36 @@ globalThis.CF = (() => {
       el.textAlignHorizontal = { center: 'CENTER', right: 'RIGHT', end: 'RIGHT', justify: 'JUSTIFIED' }[n.align] || 'LEFT';
       el.resize(Math.max(1, n.w), Math.max(1, n.h));
       if (n.truncate || n.clamp) { el.textTruncation = 'ENDING'; el.maxLines = n.clamp || 1; el.textAutoResize = 'NONE'; el.resize(Math.max(1, n.w), Math.max(1, n.h)); }
-      else el.textAutoResize = n.nowrap ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
-    } else if (n.type === 'svg') {
-      const key = n.icon && opts.icons && opts.icons[n.icon];
-      if (key) {
-        try { el = (await figma.importComponentByKeyAsync(key)).createInstance(); el.resize(n.w, n.h); }
-        catch (e) { log.push(`Icon ${n.icon} nicht importierbar: ${e.message}`); }
+      else {
+        // Einzeilige Texte wachsen mit dem Inhalt: Figma misst etwas breiter als der Browser und bräche sonst um.
+        const lh = Math.max(...n.runs.map(r => r.style.lh || r.style.size * 1.2));
+        el.textAutoResize = n.nowrap || (!n.grow && n.h <= lh + 1) ? 'WIDTH_AND_HEIGHT' : 'HEIGHT';
       }
+    } else if (n.type === 'svg') {
+      // opts.icons[name] = Komponenten-Key oder { 14: key, 18: key, 24: key } – dann die nächste Größe, nicht skaliert
+      const ref = n.icon && opts.icons && opts.icons[n.icon];
+      const key = typeof ref === 'string' ? ref : ref && ref[Object.keys(ref).sort((p, q) => Math.abs(p - n.w) - Math.abs(q - n.w))[0]];
+      if (key) {
+        try {
+          el = (await figma.importComponentByKeyAsync(key)).createInstance();
+          if (typeof ref === 'string') el.resize(n.w, n.h);
+          else if (Math.abs(el.width - n.w) > .5) {
+            log.push(`Icon ${n.icon}: ${n.w} → ${el.width} px (Größe aus der Library)`);
+            n.x += (n.w - el.width) / 2; n.y += (n.h - el.height) / 2;
+          }
+          // Farbe wie im Code: sitzt an den Vektoren in der Glyphe
+          const m = n.svg && (n.svg.match(/stroke="rgb\(([^)]+)\)"/) || n.svg.match(/fill="rgb\(([^)]+)\)"/));
+          if (m) {
+            const hex = '#' + m[1].split(/[\s,]+/).map(v => (+v).toString(16).padStart(2, '0')).join('');
+            const token = Object.keys(V).find(t => V[t].hex === hex && V[t].a === 1);
+            const p = paint({ hex, a: 1, token }, V);
+            for (const v of el.findAll(x => x.type === 'VECTOR' || x.type === 'BOOLEAN_OPERATION')) {
+              if (v.fills?.length) v.fills = [p];
+              if (v.strokes?.length) v.strokes = [p];
+            }
+          }
+        } catch (e) { el = null; log.push(`Icon ${n.icon} nicht importierbar: ${e.message}`); }
+      } else if (n.icon && opts.icons) log.push(`Icon ${n.icon} fehlt in der Library – als SVG gezeichnet`);
       if (!el) {
         try { el = figma.createNodeFromSvg(n.svg); }
         catch (e) { el = figma.createFrame(); el.fills = []; log.push(`SVG nicht lesbar (${n.name})`); }
@@ -162,7 +186,7 @@ globalThis.CF = (() => {
         const kid = await node(k, V, opts);
         el.appendChild(kid);
         if (n.layout && !k.abs) {
-          const stretch = k.alignSelf === 'stretch' || (/^(auto|normal)$/.test(k.alignSelf) && /^(normal|stretch)$/.test(n.layout.align));
+          const stretch = k.alignSelf === 'stretch' || ((!k.alignSelf || /^(auto|normal)$/.test(k.alignSelf)) && /^(normal|stretch)$/.test(n.layout.align));
           if ('layoutGrow' in kid) kid.layoutGrow = k.grow ? 1 : 0;
           if ('layoutAlign' in kid) kid.layoutAlign = stretch ? 'STRETCH' : 'INHERIT';
         } else {

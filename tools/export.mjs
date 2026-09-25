@@ -145,6 +145,31 @@ el.setAttribute('width', '320');</pre>
 `;
 }
 
+// Figma-Daten verdichten: Standardwerte weglassen, nur benutzte Tokens mitgeben (die Daten laufen durch figma_execute)
+function compactFigma(data) {
+  const used = new Set();
+  const drop = (o, k, v) => { if (JSON.stringify(o[k]) === JSON.stringify(v)) delete o[k]; };
+  const col = c => { if (c && c.token) used.add(c.token); if (c && c.token === null) delete c.token; };
+  const walk = n => {
+    drop(n, 'opacity', 1); drop(n, 'abs', false); drop(n, 'grow', false); drop(n, 'area', null);
+    if (/^(auto|normal)$/.test(n.alignSelf || '')) delete n.alignSelf;
+    for (const k of ['fill', 'gradient', 'stroke', 'img', 'icon', 'clamp']) drop(n, k, null);
+    for (const k of ['clip', 'truncate', 'nowrap', 'bleed']) drop(n, k, false);
+    drop(n, 'shadows', []); drop(n, 'pad', [0, 0, 0, 0]); drop(n, 'radius', [0, 0, 0, 0]);
+    if (n.name === n.area) delete n.area;
+    col(n.fill); col(n.color); if (n.stroke) col(n.stroke.color); (n.shadows || []).forEach(x => col(x.color));
+    if (n.align === 'left' || n.align === 'start') delete n.align;
+    if (n.layout) { for (const k of ['crossGap', 'gap']) drop(n.layout, k, 0); drop(n.layout, 'wrap', false); drop(n.layout, 'reverse', false); }
+    for (const r of n.runs || []) { const st = r.style; drop(st, 'ls', 0); drop(st, 'italic', false); drop(st, 'strike', false); drop(st, 'tabular', false); col(st.color); }
+    if (n.type === 'svg') delete n.color;
+    (n.children || []).forEach(walk);
+    for (const k of Object.keys(n)) if (typeof n[k] === 'number') n[k] = Math.round(n[k] * 10) / 10;
+  };
+  data.layouts.forEach(l => walk(l.tree));
+  data.tokens = data.tokens.filter(t => used.has(t.name));
+  return data;
+}
+
 const result = await withPage(pageURL(`view=layouts&still&media=none&system=${encodeURIComponent(system)}`), async page => {
   const ok = await page.waitFor("document.documentElement.dataset.ready === '1'", 30000);
   if (!ok) throw new Error(`Seite nicht fertig. ${page.errors.join(' | ')}`);
@@ -157,7 +182,7 @@ const result = await withPage(pageURL(`view=layouts&still&media=none&system=${en
       write(`${cid}/${cid}.wc.html`, webComponentDemo(cid, rt, await page.eval(`Factory.byId[${JSON.stringify(cid)}].layouts.map(l => ({ id: l.id, name: l.name }))`)));
     }
     if (kind === 'html' || kind === 'all') write(`${cid}/${cid}.html`, await page.eval(`Factory.exportHTML(${JSON.stringify(cid)})`));
-    if (kind === 'figma' || kind === 'all') write(`${cid}.figma.json`, JSON.stringify(await page.eval(`Factory.exportFigma(${JSON.stringify(cid)})`)));
+    if (kind === 'figma' || kind === 'all') write(`${cid}.figma.json`, JSON.stringify(compactFigma(await page.eval(`Factory.exportFigma(${JSON.stringify(cid)})`))));
   }
   return { errors: page.errors };
 }, { width: 1600, height: 1200 });

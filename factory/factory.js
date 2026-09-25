@@ -259,7 +259,9 @@ function tokenPalette() {
 }
 function matchToken(c) {
   const d = t => Math.hypot(t.rgb[0] - c.rgb[0], t.rgb[1] - c.rgb[1], t.rgb[2] - c.rgb[2]);
-  const best = tokenPalette().reduce((b, t) => (!b || d(t) < d(b) ? t : b), null);
+  // Bei gleichem Farbton gewinnt der Token mit passender Deckkraft (Weiß 100 % statt Weiß 40 %)
+  const score = t => d(t) + Math.abs((t.a ?? 1) - (c.a ?? 1)) * 2;
+  const best = tokenPalette().reduce((b, t) => (!b || score(t) < score(b) ? t : b), null);
   if (best && d(best) <= 3) return best.name;
   if (c.a < 1 && (c.rgb.every(x => x === 0) || c.rgb.every(x => x === 255))) return 'neutral'; // Schwarz/Weiß mit Transparenz für Linien und Schatten
   return null;

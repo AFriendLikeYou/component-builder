@@ -11,4 +11,5 @@ Factory.load([
   'moodboard',
   'compass',
   'reading',
+  'video',
 ]);
