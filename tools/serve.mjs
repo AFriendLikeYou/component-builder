@@ -23,6 +23,8 @@ const TYPES = {
 const RELOAD = `<script>new EventSource('/__reload').onmessage = () => { if (!window.__cfHold) location.reload(); };</script>`;
 const clients = new Set();
 let job = null, pendingPing = false;
+// Die laufende Anfrage mit allen bisherigen Ereignissen: Eine neu geladene Seite hängt sich über /api/job wieder an
+let jobInfo = null;
 const history = createHistory(ROOT, { busy: () => !!job });
 const muted = new Map(); // Dateien, die die Seite selbst schreibt: kein Neuladen auslösen
 const readBody = req => new Promise(res => { let b = ''; req.on('data', d => { b += d; if (b.length > 500000) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b)); } catch { res(null); } }); });
@@ -40,6 +42,23 @@ function writeTweaks(id, tweaks) {
 Factory.tweaks(${JSON.stringify(id)}, ${JSON.stringify(tweaks, null, 2)});
 `);
 }
+
+// Leitsätze (feedback/leitsaetze.js): Claude leitet sie ab, die Fabrik ändert nur ihren Status
+const LS_FILE = path.join(ROOT, 'feedback', 'leitsaetze.js');
+const LS_HEAD = `// Leitsätze: was Claude aus den Rückmeldungen des Teams ableitet (Entscheidungen zu Varianten, Ausnahmen, Feinschliff).
+// Die Ansicht „Regeln“ → Gelernt zeigt sie; dort werden sie bestätigt, verworfen oder zur Regel gemacht.
+// status: vorschlag = gilt noch nicht · bestaetigt = gilt wie eine Soll-Regel · regel = steht jetzt im Regelwerk (regel: <regelwerk>:<id>) · verworfen = nicht wieder vorschlagen
+// system: null = alle Regelwerke, sonst die id · belege: <komponente>/<layout> (Entscheidung in praeferenzen.js),
+//   ausnahme:<komponente>/<layout>/<prüfung>, feinschliff:<komponente>[/<layout>] · warum: woraus der Leitsatz folgt, ein Halbsatz.
+// Nach „window.CF_LEITSAETZE =“ steht gültiges JSON.
+`;
+function readLeitsaetze() {
+  if (!fs.existsSync(LS_FILE)) return [];
+  const m = fs.readFileSync(LS_FILE, 'utf8').match(/window\.CF_LEITSAETZE\s*=\s*(\[[\s\S]*\]);?\s*$/);
+  if (!m) throw new Error('feedback/leitsaetze.js hat kein gültiges Format');
+  return JSON.parse(m[1]);
+}
+const writeLeitsaetze = list => { fs.mkdirSync(path.dirname(LS_FILE), { recursive: true }); fs.writeFileSync(LS_FILE, `${LS_HEAD}window.CF_LEITSAETZE = ${JSON.stringify(list, null, 2)};\n`); };
 
 // Text direkt in der Komponentendatei ersetzen – nur wenn er genau einmal als ganzer String oder Elementtext vorkommt
 function patchText(id, from, to) {
@@ -67,7 +86,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/status') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job, history: history.enabled }));
+    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job, history: history.enabled, job: job && jobInfo ? { prompt: jobInfo.prompt, view: jobInfo.view, started: jobInfo.started } : null }));
   }
   // Zeitreise: /@<commit>/… liefert die Fabrik genau so, wie sie in diesem Commit war (für Vorher/Nachher)
   const at = url.pathname.match(/^\/@([0-9a-f]{7,40})(\/.*)?$/);
@@ -99,6 +118,14 @@ const server = http.createServer((req, res) => {
     readBody(req).then(b => { const r = history.restore(b?.sha); if (r.ok) console.log(`↺ ${r.subject}`); sendJSON(res, 200, r); });
     return;
   }
+  if (url.pathname === '/api/job') {
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
+    if (!job || !jobInfo) { res.write(JSON.stringify({ type: 'error', text: 'Die Anfrage ist schon beendet.' }) + '\n'); return res.end(); }
+    for (const ev of jobInfo.events) res.write(JSON.stringify(ev) + '\n');
+    jobInfo.subs.add(res);
+    req.on('close', () => jobInfo?.subs.delete(res));
+    return;
+  }
   if (url.pathname === '/api/cancel' && req.method === 'POST') {
     job?.cancel();
     res.writeHead(204); return res.end();
@@ -108,17 +135,22 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
     req.on('end', () => {
-      let prompt = '', system = 'fabrik', figma = false;
-      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; } catch {}
+      let prompt = '', system = 'fabrik', figma = false, view = 'build';
+      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; if (/^[a-z]+$/.test(j.view || '')) view = j.view; } catch {}
       if (!prompt) { res.writeHead(400); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
-      const send = ev => { try { res.write(JSON.stringify(ev) + '\n'); } catch {} };
+      const info = jobInfo = { prompt, view, started: Date.now(), events: [], subs: new Set() };
+      const send = ev => {
+        info.events.push(ev);
+        const line = JSON.stringify(ev) + '\n';
+        for (const r of [res, ...info.subs]) { try { r.write(line); } catch {} }
+      };
       console.log(`→ Claude: ${prompt}`);
       job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
         try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true }); } catch (e) { console.error('Verlauf:', e.message); }
-        send(ev); res.end(); job = null;
+        send(ev); res.end(); info.subs.forEach(r => { try { r.end(); } catch {} }); job = null;
         if (pendingPing) { pendingPing = false; setTimeout(ping, 400); }
       });
     });
@@ -163,7 +195,7 @@ const server = http.createServer((req, res) => {
       const file = path.join(ROOT, 'feedback', 'praeferenzen.js');
       let list = [];
       try { const m = fs.readFileSync(file, 'utf8').match(/window\.CF_FEEDBACK = (\[[\s\S]*\]);/); if (m) list = JSON.parse(m[1]); } catch {}
-      list.push({ when: new Date().toISOString().slice(0, 10), system: String(b.system || '').slice(0, 20), c: b.c, l: b.l.slice(0, 60), variantOf: b.variantOf || null, direction: b.direction || null, decision: b.decision, comment: String(b.comment || '').slice(0, 300) });
+      list.push({ when: new Date().toISOString().slice(0, 10), system: String(b.system || '').slice(0, 20), c: b.c, l: b.l.slice(0, 60), name: String(b.name || '').slice(0, 80), idea: String(b.idea || '').slice(0, 400), variantOf: b.variantOf || null, direction: b.direction || null, decision: b.decision, comment: String(b.comment || '').slice(0, 300) });
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, `// Präferenzen des Teams: behaltene und verworfene Varianten mit Kommentar. Claude liest das, bevor es neue Varianten baut.\nwindow.CF_FEEDBACK = ${JSON.stringify(list, null, 2)};\n`);
       history.schedule(`Präferenz: ${b.c}/${b.l} ${b.decision}`);
@@ -171,6 +203,36 @@ const server = http.createServer((req, res) => {
       sendJSON(res, 200, { ok: true });
     });
     return;
+  }
+  if (url.pathname === '/api/leitsatz' && req.method === 'POST') {
+    readBody(req).then(b => {
+      if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – gleich noch einmal.' });
+      const NEXT = { confirm: 'bestaetigt', drop: 'verworfen', unconfirm: 'vorschlag', rule: 'regel' };
+      if (!b || typeof b.id !== 'string' || !NEXT[b.action]) return sendJSON(res, 400, { ok: false, error: 'Ungültige Anfrage' });
+      let list;
+      try { list = readLeitsaetze(); } catch (e) { return sendJSON(res, 500, { ok: false, error: e.message }); }
+      const x = list.find(l => l.id === b.id);
+      if (!x) return sendJSON(res, 404, { ok: false, error: `Leitsatz ${b.id} nicht gefunden` });
+      let msg = `Gelernt: ${b.id} ${{ confirm: 'bestätigt', drop: 'verworfen', unconfirm: 'wieder Vorschlag', rule: 'wird Regel' }[b.action]}`;
+      if (b.action === 'rule') {
+        const sid = String(b.systemId || '');
+        if (!/^[a-z0-9-]+$/.test(sid) || !fs.existsSync(path.join(ROOT, 'systems', sid, 'system.js'))) return sendJSON(res, 400, { ok: false, error: 'Unbekanntes Regelwerk' });
+        if (!validSystem(b.system) || !/^[A-Za-z]+\d+$/.test(String(b.rule || '')) || !b.system.rules.some(r => r.id === b.rule)) return sendJSON(res, 400, { ok: false, error: 'Ungültiges Regelwerk' });
+        fs.writeFileSync(path.join(ROOT, 'systems', sid, 'system.js'), renderSystemJS({ ...b.system, id: sid }));
+        x.regel = `${sid}:${b.rule}`;
+        msg += ` ${b.rule} (${sid} v${b.system.version})`;
+      }
+      x.status = NEXT[b.action];
+      writeLeitsaetze(list);
+      console.log(`✦ ${msg}`);
+      history.commitNow(msg);
+      sendJSON(res, 200, { ok: true, list });
+    });
+    return;
+  }
+  if (url.pathname === '/feedback/leitsaetze.js' && !fs.existsSync(LS_FILE)) {
+    res.writeHead(200, { 'Content-Type': TYPES['.js'], 'Cache-Control': 'no-store' });
+    return res.end('window.CF_LEITSAETZE = [];');
   }
   if (url.pathname === '/feedback/praeferenzen.js' && !fs.existsSync(path.join(ROOT, 'feedback', 'praeferenzen.js'))) {
     res.writeHead(200, { 'Content-Type': TYPES['.js'], 'Cache-Control': 'no-store' });

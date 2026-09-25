@@ -79,6 +79,7 @@ F.load = async ids => {
   }
   await addScript(`media/_media.js${bust}`);
   await addScript(`feedback/praeferenzen.js${bust}`);
+  await addScript(`feedback/leitsaetze.js${bust}`);
   boot();
 };
 
@@ -308,6 +309,38 @@ function fitLabel(first, w, font, offset) {
   return s;
 }
 
+/* ---------- Bausteine (atoms in system.js) ---------- */
+// Beispiel eines Bausteins als HTML: {v} = Variantenklassen, {icon:name:größe} = Icon
+const atomSample = (a, v = '') => String(a.sample || `<span class="${a.match.replace(/^\./, '')} {v}">${esc(a.name)}</span>`)
+  .replace(/\{v\}/g, v).replace(/\{icon:([a-z-]+)(?::(\d+))?\}/g, (m, n, z) => icon(n, +z || 20));
+const atomById = id => (S.atoms || []).find(a => a.id === id);
+const atomOf = el => (S.atoms || []).find(a => el.matches(a.match));
+const NOISE_CLASS = /^(t-\d+|w-\d+|ink-\d|num|clip|tight|serif|row|stack|grow|between|g-\d+|is-.+|sm|lg|xl|solid)$/;
+const selOf = el => { const k = [...el.classList].find(x => !NOISE_CLASS.test(x)); return `${el.tagName.toLowerCase()}${k ? `.${k}` : ''}`; };
+const labelOf = el => (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24) || el.tagName.toLowerCase();
+// Erlaubte Höhen je Baustein, gemessen an den Beispielen (Standard und jede Variante)
+let ATOM_SIZES = null;
+function atomSizes() {
+  if (ATOM_SIZES) return ATOM_SIZES;
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-9999px;top:0';
+  host.innerHTML = `<div class="cf-card" style="width:352px;padding:24px">${(S.atoms || []).map(a => ['', ...Object.keys(a.variants || {})].map(v => `<div data-atom="${esc(a.id)}">${atomSample(a, v)}</div>`).join('')).join('')}</div>`;
+  document.body.appendChild(host);
+  ATOM_SIZES = {};
+  host.querySelectorAll('[data-atom]').forEach(d => { const el = d.firstElementChild; if (el) (ATOM_SIZES[d.dataset.atom] ||= new Set()).add(r1(el.getBoundingClientRect().height)); });
+  host.remove();
+  return ATOM_SIZES;
+}
+// Welcher Baustein passt zu einem Eigenbau?
+function suggestAtom(el) {
+  const role = el.getAttribute('role');
+  if (role === 'checkbox' || el.hasAttribute('aria-checked')) return atomById('check');
+  if (role === 'switch' || el.hasAttribute('aria-pressed')) return atomById('toggle');
+  const hasText = [el, ...el.querySelectorAll('*')].some(k => !(k instanceof SVGElement) && [...k.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim()));
+  if (!hasText) return atomById('btn-round');
+  return alpha(getComputedStyle(el).backgroundColor) > .04 ? atomById('btn-pill') : atomById('btn-text');
+}
+
 function measure(c, l, host) {
   MEASURING = true;
   host.innerHTML = cardHTML(c, l);
@@ -394,6 +427,48 @@ function measure(c, l, host) {
           : side === 'Left' ? { x: r.x, y: r.y, w: bw, h: r.h } : { x: r1(r.x + r.w - bw), y: r.y, w: bw, h: r.h };
         bp.fills.push({ ...line, r: 0, kind: 'line' });
       }
+    }
+  }
+
+  // Bausteine (R12): Bedienelemente, Chips und Balken aus den Bausteinen, Icons aus dem Icon-Satz
+  bp.atomUse = []; bp.own = [];
+  if (S.atoms?.length) {
+    const sel = S.atoms.map(a => a.match).join(', '), CTL = `${CONTROL}, [role="checkbox"], [role="switch"]`;
+    const sizes = atomSizes();
+    const own = (kind, el, r, msg, suggest) => {
+      if (bp.own.some(o => o.msg === msg)) return;
+      bp.own.push({ kind, sel: selOf(el), label: labelOf(el), w: Math.round(r.w), h: Math.round(r.h), suggest: suggest || null, msg, html: el.outerHTML.slice(0, 4000) });
+      V('atoms', msg);
+    };
+    for (const el of card.querySelectorAll(`${CTL}, ${sel}`)) {
+      if (el.closest('.cf-error')) continue;
+      const r = rel(el.getBoundingClientRect());
+      if (r.w < 1 || r.h < 1) continue;
+      const a = atomOf(el);
+      if (a) {
+        bp.atomUse.push({ atom: a.id, vars: Object.keys(a.variants || {}).filter(v => el.classList.contains(v)) });
+        const ok = sizes[a.id];
+        if (a.control !== false && ok?.size && ![...ok].some(x => Math.abs(x - r.h) < .6)) own('size', el, r, `${a.name} „${labelOf(el)}“ ist ${Math.round(r.h)} px hoch – der Baustein kennt ${[...ok].sort((p, q) => p - q).join(', ')} px`, a.id);
+        continue;
+      }
+      if (el.parentElement.closest(`${CTL}, ${sel}`)) continue;
+      const sug = suggestAtom(el);
+      own('control', el, r, `Eigenbau „${labelOf(el)}“ (${selOf(el)}, ${Math.round(r.w)} × ${Math.round(r.h)}) – nimm ${sug ? `${sug.name} (${sug.match})` : 'einen Baustein'}`, sug?.id);
+    }
+    // Fortschrittsbalken ohne Baustein: flacher Balken, links darin ein gefüllter kürzerer Teil
+    for (const el of card.querySelectorAll('div, span, i')) {
+      if (el.children.length !== 1 || el.closest(`[data-media], .cf-error, ${sel}`)) continue;
+      const kid = el.firstElementChild;
+      const b = el.getBoundingClientRect(), k = kid.getBoundingClientRect();
+      if (b.height < 2 || b.height > 8 || b.width < 40 || k.width >= b.width - 1 || Math.abs(k.height - b.height) > 1 || Math.abs(k.left - b.left) > 1) continue;
+      if (alpha(getComputedStyle(el).backgroundColor) < .04 || alpha(getComputedStyle(kid).backgroundColor) < .04) continue;
+      const r = rel(b), p = atomById('progress');
+      own('progress', el, r, `Eigenbau Fortschritt (${selOf(el)}, ${Math.round(r.w)} × ${Math.round(r.h)}) – nimm ${p ? `${p.name} (${p.match})` : 'einen Baustein'}`, p?.id);
+    }
+    for (const el of card.querySelectorAll('svg.icon')) {
+      const n = el.dataset.icon;
+      if (n && ICONS[n]) continue;
+      own('icon', el, rel(el.getBoundingClientRect()), `Icon „${n || 'ohne Namen'}“ ist nicht im Icon-Satz – über h.icon nehmen oder in den Satz aufnehmen`, null);
     }
   }
 
@@ -785,7 +860,7 @@ function cycleMedia() {
 }
 
 /* ---------- Verlauf (Git) ---------- */
-const KIND_NAME = { claude: 'Claude', tweak: 'Feinschliff', text: 'Text', rules: 'Regeln', undo: 'Rückgängig', restore: 'Zurück', extern: 'Datei', start: 'Start' };
+const KIND_NAME = { learn: 'Gelernt', claude: 'Claude', tweak: 'Feinschliff', text: 'Text', rules: 'Regeln', undo: 'Rückgängig', restore: 'Zurück', extern: 'Datei', start: 'Start' };
 function relTime(iso) {
   const s = (Date.now() - new Date(iso)) / 1000;
   if (s < 45) return 'gerade eben';
@@ -1043,6 +1118,7 @@ function initChrome() {
     state.view = b.dataset.view; state.solo = false; route();
   }));
   document.getElementById('cf-media').addEventListener('click', cycleMedia);
+  document.getElementById('cf-job')?.addEventListener('click', () => { state.view = 'build'; state.solo = false; route(); });
   if (!Q.get('media')) {
     if (!MEDIA_SOURCES.includes(mediaSource) || mediaSource === 'own' || (mediaSource === 'folder' && !window.MEDIA?.length)) mediaSource = 'web';
     if (window.MEDIA?.length && store.get('media', null) == null) mediaSource = 'folder';
@@ -1079,6 +1155,7 @@ function route(keep) {
   document.querySelectorAll('.cf-tabs button').forEach(b => b.classList.toggle('on', b.dataset.view === state.view));
   VIEWS[state.view](keep);
   syncURL();
+  paintJob();
 }
 
 /* ---------- Ausnahmen ---------- */
@@ -1310,7 +1387,7 @@ function variantPrompt(c, l, dir, note) {
   return `Variante erzeugen: Komponente „${c.name}“ (components/${c.id}.js), ausgehend vom Layout „${l.name}“ (id ${l.id}). Richtung: ${d.name.toLowerCase()} – ${d.desc}.${note ? `\nWorauf achten: ${note}` : ''}
 Füge ein NEUES Layout hinzu, das Ausgangslayout bleibt unverändert: id „${nid}“ (falls vergeben, eine freie id), name „${l.name} · ${d.name}“, variantOf: „${l.id}“, direction: „${dir}“. Gleiche Daten, gleiche Regeln des aktiven Regelwerks.
 Schreib in idea zwei kurze Sätze: was die Variante anders macht als „${l.name}“ und warum das der Richtung dient – konkret, z. B. „Nutzt die Breite besser und hält die Textkante konsistent.“
-Berücksichtige feedback/praeferenzen.js, falls vorhanden (was das Team bisher behalten oder verworfen hat). Die Variante muss die Prüfung bestehen.`;
+Berücksichtige feedback/praeferenzen.js (was das Team bisher behalten oder verworfen hat) und feedback/leitsaetze.js (bestätigte Leitsätze gelten wie Soll-Regeln, auch gegen die Beschreibung der Richtung). Die Variante muss die Prüfung bestehen.`;
 }
 function bindVariant(sec, c) {
   const bar = sec.querySelector('.cf-varbar');
@@ -1350,7 +1427,7 @@ document.addEventListener('click', e => {
   form.addEventListener('submit', async ev => {
     ev.preventDefault();
     const comp = F.byId[c], lay = comp.layouts.find(x => x.id === l);
-    const entry = { system: SYS_ID, c, l, direction: lay.direction || null, variantOf: lay.variantOf || null, decision: vardec, comment: form.querySelector('input').value.trim() };
+    const entry = { system: SYS_ID, c, l, name: lay.name, idea: lay.idea || '', direction: lay.direction || null, variantOf: lay.variantOf || null, decision: vardec, comment: form.querySelector('input').value.trim() };
     window.CF_FEEDBACK = [...(window.CF_FEEDBACK || []), { ...entry, when: new Date().toISOString().slice(0, 10) }];
     if (F.live) { try { await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {} }
     if (vardec === 'verworfen' && F.live) {
@@ -1528,6 +1605,7 @@ function ruleFigure(rule, ex) {
       const k = F.consistency || {};
       return `<div class="rs-cons"><p><span>Kopfzeile</span><b>${k.style ? esc(k.style.label) : 'keine klare Mehrheit'}</b>${k.style ? `<em>${k.style.count} von ${k.style.of} Layouts</em>` : ''}</p><p><span>Abstand darunter</span><b>${k.gap ? `${k.gap.value} px` : 'keine klare Mehrheit'}</b>${k.gap ? `<em>${k.gap.count} von ${k.gap.of} Layouts</em>` : ''}</p></div>`;
     }
+    case 'atoms': return `<div class="rs-atomfig cf-card">${['btn-round', 'btn-pill', 'toggle', 'check'].map(atomById).filter(Boolean).map(a => atomSample(a, a.id === 'btn-round' ? 'solid' : '')).join('')}</div>`;
     case 'three': return `<div class="rs-three">${c.layouts.slice(0, 3).map(x => mini(cardHTML(c, x), x.width, bpOf(c, x).h, .22)).join('')}</div>`;
     default: return `<span class="rs-none">${esc(rule.id)}</span>`;
   }
@@ -1628,16 +1706,234 @@ function checkPrompt(rule) {
 Ergänze dazu in measure() in factory/factory.js eine Messung mit V('<kürzel>', '<Meldung auf Deutsch>') und trage das Kürzel in checks dieser Regel in ${SYS_JS} ein. Die Messung soll am gerenderten DOM arbeiten wie die übrigen. Lass danach node tools/check.mjs laufen und berichte, welche Komponenten die neue Regel verletzen – ändere die Komponenten selbst noch nicht.`;
 }
 
-function prefsHTML() {
+/* ---------- Regeln → Bausteine ---------- */
+// Übersicht der Bausteine (atoms in system.js) mit allen Varianten, ihrer Verwendung und den Eigenbauten, die die Messung findet.
+function ownGroups(all) {
+  const map = new Map();
+  for (const x of all) for (const o of x.bp.own || []) {
+    const key = `${x.c.id}|${o.kind}|${o.sel}`;
+    if (!map.has(key)) map.set(key, { key, c: x.c, l: x.l, kind: o.kind, sel: o.sel, label: o.label, suggest: o.suggest, html: o.html, w: o.w, h: o.h, sizes: new Set(), layouts: [], msgs: [] });
+    const g = map.get(key);
+    g.sizes.add(o.kind === 'size' ? `${o.h} px hoch` : `${o.w} × ${o.h}`);
+    if (!g.layouts.includes(x.l.name)) g.layouts.push(x.l.name);
+    g.msgs.push(o.msg);
+  }
+  return [...map.values()];
+}
+const OWN_KIND = { control: 'Bedienelement', progress: 'Fortschritt', icon: 'Icon', size: 'Größe' };
+const iconName = g => (g.html.match(/data-icon="([^"]+)"/) || [])[1] || 'ohne Namen';
+function ownSwitchPrompt(groups) {
+  const byC = new Map();
+  groups.filter(g => g.kind !== 'icon').forEach(g => { if (!byC.has(g.c.id)) byC.set(g.c.id, []); byC.get(g.c.id).push(g); });
+  const icons = groups.filter(g => g.kind === 'icon');
+  const line = g => {
+    const a = atomById(g.suggest);
+    return `- ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}, Layouts ${g.layouts.join(', ')}) → ${a ? `${a.name} ${a.match}` : 'passender Baustein'}${g.kind === 'size' ? ' in einer Größe, die der Baustein kennt' : ''}`;
+  };
+  return `Stelle Eigenbauten auf die Bausteine des aktiven Regelwerks um (atoms in ${SYS_JS}, CSS in ${SYS_CSS}; dieselben Klassen gibt es in allen Regelwerken).
+${[...byC].map(([id, gs]) => `components/${id}.js:\n${gs.map(line).join('\n')}`).join('\n')}${icons.length ? `\nEigene Icons: ${icons.map(g => `„${iconName(g)}“ in components/${g.c.id}.js`).join(', ')} – über h.icon nehmen, fehlt eins im Icon-Satz, nimm das nächste passende und nenne es am Ende.` : ''}
+Form und Höhe kommen aus dem Baustein (passende Variante wählen, z. B. .lg für 48 px); komponentenspezifische Farben und Abstände dürfen bleiben. Verhalten und Hover-Stile erhalten, danach nicht mehr benutztes CSS entfernen. Fehlt eine Größe oder Form im Baustein, nimm die nächste passende Variante und nenne das am Ende. Prüfe mit node tools/check.mjs <id> --states --system ${SYS_ID} und sieh dir die Screenshots an.`;
+}
+function ownAdoptPrompt(g) {
+  if (g.kind === 'icon') {
+    const n = iconName(g);
+    return `Nimm das Icon „${n}“ aus components/${g.c.id}.js in den Icon-Satz auf: ICONS in factory/factory.js (24er viewBox, Linien mit stroke 1.6 wie die übrigen) und die Icon-Liste in CLAUDE.md. Ersetze danach das eigene SVG in der Komponente durch h.icon('${n}', …). Prüfe mit node tools/check.mjs ${g.c.id} --system ${SYS_ID}.`;
+  }
+  const a = atomById(g.suggest);
+  return `Nimm den Eigenbau ${g.sel} („${g.label}“, ${[...g.sizes].join(', ')}) aus components/${g.c.id}.js als Baustein auf. Ergänze in ALLEN Regelwerken (systems/*/system.js unter atoms, CSS in systems/*/system.css) eine Variante eines bestehenden Bausteins${a ? ` (naheliegend: ${a.name} ${a.match})` : ''} oder einen neuen Baustein – mit id, name, match, use, variants und sample wie die übrigen, Farben nur als Tokens, im ZDS-Regelwerk mit den ZDS-Radien und -Abständen. Stelle danach die Komponente auf den Baustein um und entferne ihr eigenes CSS dafür. Prüfe mit node tools/check.mjs --system fabrik und node tools/check.mjs --system zds.`;
+}
+function atomsHTML(all) {
+  const A = S.atoms || [];
+  if (!A.length) return `<p class="rs-pn">Dieses Regelwerk hat noch keine Bausteine (<code>atoms</code> in <code>${SYS_JS}</code>).</p>`;
+  const sizes = atomSizes();
+  const use = new Map();
+  for (const x of all) for (const u of x.bp.atomUse || []) {
+    if (!use.has(u.atom)) use.set(u.atom, { n: 0, layouts: new Set(), comps: new Map(), vars: new Map() });
+    const e = use.get(u.atom);
+    e.n++; e.layouts.add(`${x.c.id}/${x.l.id}`); e.comps.set(x.c.name, (e.comps.get(x.c.name) || 0) + 1);
+    (u.vars.length ? u.vars : ['']).forEach(v => e.vars.set(v, (e.vars.get(v) || 0) + 1));
+  }
+  const groups = ownGroups(all);
+  const card = a => {
+    const e = use.get(a.id);
+    const vs = ['', ...Object.keys(a.variants || {})];
+    return `<article class="rs-atom" id="baustein-${esc(a.id)}">
+      <div class="rs-atomstage cf-card">${vs.map(v => `<figure><div class="rs-atomcell">${atomSample(a, v)}</div><figcaption>${v ? esc(a.variants[v]) : 'Standard'}${v ? `<code>.${esc(v)}</code>` : ''}${e?.vars.get(v) ? `<em>${e.vars.get(v)}×</em>` : ''}</figcaption></figure>`).join('')}</div>
+      <div class="rs-atombody">
+        <h3 class="rs-atomname">${esc(a.name)} <code>${esc(a.match)}</code></h3>
+        <p class="rs-atomtext">${codeText(a.use || '')}</p>
+        <p class="rs-atommeta">${e ? `${e.n}× in ${e.layouts.size} Layouts · ${[...e.comps].sort((p, q) => q[1] - p[1]).map(([n, k]) => `${esc(n)} ${k}`).join(' · ')}` : 'noch nicht verwendet'}${a.control !== false && sizes[a.id]?.size ? ` · Höhen ${[...sizes[a.id]].sort((p, q) => p - q).join(' · ')} px` : ''}</p>
+      </div>
+    </article>`;
+  };
+  const icons = Object.keys(ICONS);
+  return `<p class="rs-pn">${A.length} Bausteine in <code>${SYS_CSS}</code>, beschrieben unter <code>atoms</code> in <code>${SYS_JS}</code>. Claude baut Bedienelemente nur daraus; Farbe und Abstand darf eine Komponente anpassen, Form und Höhe nicht. Die Regel ${esc((S.rules.find(r => r.checks.includes('atoms')) || {}).id || '')} misst das.</p>
+    <div class="rs-atoms">${A.map(card).join('')}
+      <article class="rs-atom rs-atom-icons" id="baustein-icons">
+        <div class="rs-atomstage cf-card rs-iconset">${icons.map(n => `<span title="${esc(n)}">${icon(n, 20)}<small>${esc(n)}</small></span>`).join('')}</div>
+        <div class="rs-atombody"><h3 class="rs-atomname">Icons <code>h.icon(name, größe)</code></h3><p class="rs-atomtext">${icons.length} Linien-Icons, 24er Raster, Strich 1,6. In Figma kommen sie im ZDS-Regelwerk aus der Library ZDS-Icons, soweit es dort ein gleiches gibt.</p></div>
+      </article>
+    </div>
+    <div class="rs-own" id="eigenbauten">
+      <div class="rs-ownhead">
+        <h3 class="rs-ph">Eigenbauten <span class="cf-badge ${groups.length ? 'warn' : 'ok'}">${groups.length || 'keine'}</span></h3>
+        ${groups.length && F.live ? `<button type="button" class="cf-btn" data-a="own-all">Alle auf Bausteine umstellen lassen</button>` : ''}
+      </div>
+      <p class="rs-pn">${groups.length ? 'Bedienelemente, Balken und Icons, die eine Komponente selbst gebaut hat, und Bausteine in einer Größe, die es nicht gibt. Entweder auf den Baustein umstellen oder, wenn die Form gebraucht wird, als Baustein aufnehmen – dann steht sie allen Komponenten zur Verfügung.' : 'Alle Bedienelemente, Balken und Icons kommen aus den Bausteinen.'}</p>
+      <div class="b-log ed-log rs-ownlog" data-ownlog="all"></div>
+      ${groups.length ? `<ul class="rs-ownlist">${groups.map((g, i) => {
+        const a = atomById(g.suggest);
+        return `<li class="rs-ownitem">
+          <div class="rs-ownstage cf-card" data-c="${esc(g.c.id)}" data-l="${esc(g.l.id)}" data-w="${g.w}" data-h="${g.h}">${g.html}</div>
+          <div class="rs-ownbody">
+            <p class="rs-ownname"><b>${esc(g.c.name)}</b> · ${g.kind === 'icon' ? `Icon „${esc(iconName(g))}“` : g.kind === 'progress' ? `<code>${esc(g.sel)}</code>` : `<code>${esc(g.sel)}</code> „${esc(g.label)}“`}</p>
+            <p class="rs-ownmeta">${OWN_KIND[g.kind]} · ${esc([...g.sizes].join(', '))} · ${g.layouts.length === 1 ? `Layout ${esc(g.layouts[0])}` : `${g.layouts.length} Layouts`}${a ? ` · passt zu <a href="#baustein-${esc(a.id)}">${esc(a.name)}</a>` : ''}</p>
+          </div>
+          <div class="rs-ownact">
+            <button type="button" class="cf-btn" data-own="${i}" data-act="switch">${g.kind === 'size' ? 'Größe angleichen' : g.kind === 'icon' ? 'Vorhandenes Icon nehmen' : 'Auf Baustein umstellen'}</button>
+            ${g.kind !== 'size' ? `<button type="button" class="cf-btn" data-own="${i}" data-act="adopt">${g.kind === 'icon' ? 'In den Icon-Satz' : 'Als Baustein aufnehmen'}</button>` : ''}
+          </div>
+          <div class="b-log ed-log rs-ownlog" data-ownlog="${i}"></div>
+        </li>`;
+      }).join('')}</ul>` : ''}
+    </div>`;
+}
+function bindAtoms(all) {
+  const groups = ownGroups(all);
+  main.querySelectorAll('.rs-ownstage').forEach(st => {
+    const el = st.firstElementChild, w = +st.dataset.w, h = +st.dataset.h;
+    if (!el || !w || !h) return;
+    const k = Math.min(1, (st.clientWidth - 16) / w, (st.clientHeight - 16) / h);
+    Object.assign(el.style, { position: 'relative', inset: 'auto', margin: '0', flex: 'none', whiteSpace: 'nowrap', width: `${w}px`, height: `${h}px`, zoom: String(k) });
+  });
+  const run = (prompt, log) => {
+    if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
+    main.querySelectorAll('.rs-own button').forEach(b => { b.disabled = true; });
+    generate(prompt, { log, view: 'rules' });
+  };
+  main.querySelector('[data-a="own-all"]')?.addEventListener('click', () => run(ownSwitchPrompt(groups), main.querySelector('[data-ownlog="all"]')));
+  main.querySelectorAll('[data-own]').forEach(b => b.addEventListener('click', () => {
+    const g = groups[+b.dataset.own];
+    run(b.dataset.act === 'adopt' ? ownAdoptPrompt(g) : ownSwitchPrompt([g]), main.querySelector(`[data-ownlog="${b.dataset.own}"]`));
+  }));
+}
+
+/* ---------- Regeln → Gelernt ---------- */
+// Was Claude aus den Rückmeldungen ableitet: Leitsätze (feedback/leitsaetze.js) mit ihren Belegen,
+// die Entscheidungen zu Varianten (feedback/praeferenzen.js), akzeptierte Ausnahmen und Feinschliff.
+// Ein Leitsatz gilt erst, wenn ihr ihn bestätigt; bestätigte lassen sich zu einer Regel machen.
+const LS_STATUS = { vorschlag: 'Vorschlag', bestaetigt: 'Bestätigt', regel: 'Jetzt Regel', verworfen: 'Verworfen' };
+const fbKey = e => `${e.c}/${e.l}`;
+function belegLabel(key) {
+  const ex = key.match(/^ausnahme:([a-z0-9-]+)\/([a-z0-9-]+)\/(.+)$/);
+  if (ex) { const c = F.byId[ex[1]]; return `Ausnahme ${ex[3]} in ${c?.name || ex[1]} · ${c?.layouts.find(l => l.id === ex[2])?.name || ex[2]}`; }
+  const fb = (window.CF_FEEDBACK || []).find(e => fbKey(e) === key);
+  if (fb) return `${F.byId[fb.c]?.name || fb.c} · ${fb.name || dirName(fb.direction)} ${fb.decision}${fb.comment ? ` („${fb.comment}“)` : ''}`;
+  const tw = key.match(/^feinschliff:([a-z0-9-]+)(?:\/([a-z0-9-]+))?$/);
+  if (tw) return `Feinschliff in ${F.byId[tw[1]]?.name || tw[1]}${tw[2] ? ` · ${F.byId[tw[1]]?.layouts.find(l => l.id === tw[2])?.name || tw[2]}` : ''}`;
+  return key;
+}
+function exceptionPatterns() {
+  const map = new Map();
+  for (const [cid, lays] of Object.entries(F.tw)) for (const [lid, t] of Object.entries(lays || {})) for (const e of t?.exceptions || []) {
+    const sys = e.system || 'alle';
+    const k = `${sys}|${e.rule}`;
+    if (!map.has(k)) map.set(k, { sys, code: e.rule, items: [] });
+    map.get(k).items.push({ c: F.byId[cid]?.name || cid, l: F.byId[cid]?.layouts.find(x => x.id === lid)?.name || lid, reason: e.reason || '' });
+  }
+  return [...map.values()].sort((a, b) => b.items.length - a.items.length);
+}
+function tweakSummary() {
+  const out = [];
+  for (const c of F.components) {
+    const lays = Object.entries(F.tw[c.id] || {}).filter(([, t]) => t && (Object.keys(t.el || {}).length || Object.keys(t.text || {}).length || t.height));
+    if (lays.length) out.push({ c, n: lays.length, names: lays.map(([lid]) => c.layouts.find(l => l.id === lid)?.name || lid) });
+  }
+  return out;
+}
+function learnPrompt() {
+  return `Leite aus den Rückmeldungen des Teams Leitsätze ab und schreibe sie nach feedback/leitsaetze.js (Format, Felder und Kommentare wie in der Datei; der Inhalt nach „window.CF_LEITSAETZE =“ bleibt gültiges JSON).
+Quellen: feedback/praeferenzen.js (behaltene und verworfene Varianten, mit Kommentar und idea der Variante), exceptions und Feinschliff (el, text, height) in components/*.tweaks.js, dazu die betroffenen Komponenten in components/<id>.js und das Regelwerk ${SYS_JS}.
+- Ein Leitsatz ist eine konkrete Handlungsregel in einem Satz („Listentitel bleiben in der Oberflächenschrift …“), kein Protokoll. titel: zwei bis fünf Wörter.
+- Nur, was die Belege tragen. Jeder Leitsatz nennt seine Belege (Schlüssel wie in der Datei beschrieben) und in warum einen Halbsatz, woraus er folgt.
+- Leitsätze mit status bestaetigt, regel oder verworfen nicht ändern; verworfene nicht neu vorschlagen. Neue mit status vorschlag, nächster freier id (L1, L2 …), seit = heute. Widerspricht ein Beleg einem bestätigten Leitsatz, schlag einen Ersatz vor und sag es in warum.
+- system: null, wenn er für alle Regelwerke gilt, sonst die id des Regelwerks.
+- Ändere keine Komponenten und keine Regelwerke.
+Zum Schluss ein Satz, was neu ist. Letzte Zeile: ID: -`;
+}
+function learnedHTML(all) {
+  const LS = window.CF_LEITSAETZE || [];
   const fb = window.CF_FEEDBACK || [];
-  if (!fb.length) return '<p class="rs-pn">Noch keine Entscheidungen. Behalte oder verwirf Varianten in „Layouts“ – daraus lernt Claude, welche Richtungen ihr mögt.</p>';
+  const live = LS.filter(x => x.status !== 'verworfen');
+  const dropped = LS.filter(x => x.status === 'verworfen');
+  const draft = systemDiff().length > 0;
+  const sysName = id => (window.CF_SYSTEMS || []).find(x => x.id === id)?.name || id;
+  const ls = x => `<article class="rs-ls is-${esc(x.status)}" id="leitsatz-${esc(x.id)}">
+      <p class="rs-lstop"><span class="rs-lsst">${esc(LS_STATUS[x.status] || x.status)}</span><span>${esc(x.id)} · ${x.system ? esc(sysName(x.system)) : 'alle Regelwerke'} · seit ${esc(x.seit || '')}</span></p>
+      <h3 class="rs-lstitle">${esc(x.titel || '')}</h3>
+      <p class="rs-lstext">${codeText(x.text)}</p>
+      ${x.warum ? `<p class="rs-lswhy">${esc(x.warum)}</p>` : ''}
+      <p class="rs-lsbel">${(x.belege || []).length} ${(x.belege || []).length === 1 ? 'Beleg' : 'Belege'}: ${(x.belege || []).map(b => esc(belegLabel(b))).join(' · ')}</p>
+      <div class="rs-lsact">${x.status === 'vorschlag' ? `<button type="button" class="cf-btn is-primary" data-ls="${esc(x.id)}" data-lsa="confirm">${icon('check', 14)}Bestätigen</button><button type="button" class="cf-btn" data-ls="${esc(x.id)}" data-lsa="drop">Verwerfen</button>`
+        : x.status === 'bestaetigt' ? `<button type="button" class="cf-btn" data-ls="${esc(x.id)}" data-lsa="rule"${draft ? ' disabled title="Erst den Entwurf der Regeln übernehmen oder verwerfen"' : ''}>Zur Regel in ${esc(S.name)} machen</button><button type="button" class="cf-btn" data-ls="${esc(x.id)}" data-lsa="unconfirm">Zurücknehmen</button>`
+        : x.status === 'regel' && x.regel ? `<a class="cf-btn" href="#regel-${esc(String(x.regel).split(':').pop())}">Zur Regel ${esc(String(x.regel).split(':').pop())}</a>` : ''}</div>
+    </article>`;
   const by = new Map();
   fb.forEach(e => { const k = e.direction || 'ohne Richtung'; const x = by.get(k) || { keep: 0, drop: 0 }; e.decision === 'behalten' ? x.keep++ : x.drop++; by.set(k, x); });
-  const rows = [...by].sort((a, b) => (b[1].keep - b[1].drop) - (a[1].keep - a[1].drop));
-  const notes = fb.filter(e => e.comment).slice(-5).reverse();
-  return `<p class="rs-pn">${fb.length} Entscheidungen zu Varianten. Claude liest sie (<code>feedback/praeferenzen.js</code>), bevor es neue baut.</p>
-    <div class="rs-prefs">${rows.map(([k, x]) => `<div class="rs-pref"><b>${esc(dirName(k))}</b><span class="is-ok">${x.keep} behalten</span><span class="is-bad">${x.drop} verworfen</span></div>`).join('')}</div>
-    ${notes.length ? `<ul class="rs-prefnotes">${notes.map(e => `<li><span class="${e.decision === 'behalten' ? 'is-ok' : 'is-bad'}">${e.decision === 'behalten' ? 'behalten' : 'verworfen'}</span> ${esc(F.byId[e.c]?.name || e.c)} · ${esc(dirName(e.direction))}: „${esc(e.comment)}“</li>`).join('')}</ul>` : ''}`;
+  const pats = exceptionPatterns(), tws = tweakSummary();
+  const fmtDay = d => (d ? d.split('-').reverse().slice(0, 2).join('.') + '.' : '');
+  return `<p class="rs-pn">Was Claude aus euren Rückmeldungen ableitet: Entscheidungen zu Varianten, akzeptierte Ausnahmen, Feinschliff. Ein Leitsatz gilt erst, wenn ihr ihn bestätigt – dann liest Claude ihn vor jeder Arbeit wie eine Soll-Regel. Wird er wichtig genug, macht ihr ihn zur Regel.</p>
+    <div class="rs-lshead">${F.live ? `<button type="button" class="cf-btn" data-a="learn">${icon('refresh', 14)}Leitsätze neu ableiten</button>` : ''}<span class="rs-lsnote">${live.length ? (n => `${n} ${n === 1 ? 'Vorschlag' : 'Vorschläge'}`)(live.filter(x => x.status === 'vorschlag').length) + ` · ${live.filter(x => x.status === 'bestaetigt').length} bestätigt · ${live.filter(x => x.status === 'regel').length} als Regel` : 'Noch keine Leitsätze.'}</span></div>
+    <div class="b-log ed-log rs-learnlog"></div>
+    ${live.length ? `<div class="rs-lslist">${live.map(ls).join('')}</div>` : ''}
+    ${dropped.length ? `<details class="rs-lsdrop"><summary>${dropped.length} verworfen</summary>${dropped.map(x => `<p><b>${esc(x.id)}</b> ${esc(x.text)}</p>`).join('')}</details>` : ''}
+    <div class="rs-learngrid">
+      <div class="rs-panel">
+        <h3 class="rs-ph">Entscheidungen zu Varianten</h3>
+        ${fb.length ? `<div class="rs-prefs">${[...by].sort((a, b) => (b[1].keep - b[1].drop) - (a[1].keep - a[1].drop)).map(([k, x]) => `<div class="rs-pref"><b>${esc(dirName(k))}</b><span class="is-ok">${x.keep} behalten</span><span class="is-bad">${x.drop} verworfen</span></div>`).join('')}</div>
+          <ul class="rs-prefnotes">${fb.slice().reverse().map(e => `<li><span class="${e.decision === 'behalten' ? 'is-ok' : 'is-bad'}">${e.decision}</span> ${esc(fmtDay(e.when))} ${esc(F.byId[e.c]?.name || e.c)} · ${esc(e.name || dirName(e.direction))}${e.comment ? `: „${esc(e.comment)}“` : ''}</li>`).join('')}</ul>`
+          : '<p class="rs-pn">Noch keine. Behalte oder verwirf Varianten in „Layouts“ – daraus lernt Claude, welche Richtungen ihr mögt.</p>'}
+      </div>
+      <div class="rs-panel">
+        <h3 class="rs-ph">Akzeptierte Ausnahmen</h3>
+        ${pats.length ? `<ul class="rs-prefnotes">${pats.map(p => `<li><b>${esc(ruleOf(p.code)?.id || p.code)}</b> ${p.items.length}× ${p.sys !== 'alle' ? `(${esc(sysName(p.sys))})` : ''}${p.items.length >= 3 ? ' <span class="is-bad">– Regel überdenken?</span>' : ''}<br><span class="rs-pnsmall">${p.items.map(i => `${esc(i.c)} · ${esc(i.l)}${i.reason ? `: ${esc(i.reason)}` : ''}`).join(' · ')}</span></li>`).join('')}</ul>`
+          : '<p class="rs-pn">Keine. Wer in „Schichten“ eine Abweichung bewusst annimmt, taucht hier auf; dreimal dieselbe heißt meist, dass die Regel nicht passt.</p>'}
+      </div>
+      <div class="rs-panel">
+        <h3 class="rs-ph">Feinschliff von Hand</h3>
+        ${tws.length ? `<ul class="rs-prefnotes">${tws.map(t => `<li><b>${esc(t.c.name)}</b> ${t.n} ${t.n === 1 ? 'Layout' : 'Layouts'}<br><span class="rs-pnsmall">${t.names.map(esc).join(' · ')}</span></li>`).join('')}</ul><p class="rs-pnsmall">Handkorrekturen zeigen, wo Claude danebenlag. Die Ableitung liest sie mit.</p>`
+          : '<p class="rs-pn">Kein offener Feinschliff.</p>'}
+      </div>
+    </div>`;
+}
+async function leitsatzAction(id, action) {
+  const LS = window.CF_LEITSAETZE || [];
+  const x = LS.find(l => l.id === id);
+  if (!x) return;
+  const body = { id, action };
+  if (action === 'rule') {
+    const prefix = (S.rules[S.rules.length - 1]?.id || 'R').replace(/\d+$/, '') || 'R';
+    const n = Math.max(0, ...S.rules.map(r => +String(r.id).replace(/\D/g, '') || 0)) + 1;
+    const rid = `${prefix}${n}`;
+    const system = { ...S, version: /^\d+$/.test(S.version) ? String(+S.version + 1) : S.version, rules: [...S.rules, { id: rid, title: x.titel || x.text.split(/[.:–]/)[0].slice(0, 40), checks: [], level: 'soll', text: x.text }] };
+    Object.assign(body, { rule: rid, systemId: SYS_ID, system });
+  }
+  if (!F.live) { toast('Nur mit tools/serve.mjs – die Seite ist nicht mit dem Server verbunden.', true); return; }
+  try {
+    const r = await fetch('/api/leitsatz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `Fehler ${r.status}`);
+    window.CF_LEITSAETZE = j.list;
+    toast(action === 'confirm' ? `${id} bestätigt – Claude richtet sich ab jetzt danach.` : action === 'drop' ? `${id} verworfen.` : action === 'unconfirm' ? `${id} ist wieder ein Vorschlag.` : `${id} ist jetzt Regel ${body.rule} – lädt neu …`);
+    if (action !== 'rule') viewRules(true);
+  } catch (err) { toast(err.message, true); }
+}
+function bindLearned() {
+  main.querySelectorAll('[data-lsa]').forEach(b => b.addEventListener('click', () => { b.disabled = true; leitsatzAction(b.dataset.ls, b.dataset.lsa); }));
+  main.querySelector('[data-a="learn"]')?.addEventListener('click', e => {
+    e.currentTarget.disabled = true;
+    generate(learnPrompt(), { log: main.querySelector('.rs-learnlog'), view: 'rules' });
+  });
 }
 
 function viewRules(keepScroll) {
@@ -1686,18 +1982,23 @@ function viewRules(keepScroll) {
     </article>`;
   };
   const tokens = colorTokens();
+  const ownN = ownGroups(all).length, lsN = (window.CF_LEITSAETZE || []).filter(x => x.status === 'vorschlag').length;
   main.innerHTML = `<div class="v-rules${rulesEdit ? ' is-editing' : ''}">
   <header class="rs-head">
     <div class="rs-headrow">
       <h1 class="rs-h1">Regeln für alle Komponenten</h1>
       <button type="button" class="cf-btn${rulesEdit ? ' is-primary' : ''}" data-a="rules-edit">${rulesEdit ? `${icon('check', 14)}Fertig` : `${icon('edit', 14)}Regeln anpassen`}</button></div>
+    <nav class="rs-nav" aria-label="Abschnitte"><a href="#regeln">Regeln <em>${S.rules.length}</em></a><a href="#bausteine">Bausteine <em>${(S.atoms || []).length}</em>${ownN ? `<b>${ownN} Eigenbauten</b>` : ''}</a><a href="#gelernt">Gelernt${lsN ? `<b>${lsN} ${lsN === 1 ? 'Vorschlag' : 'Vorschläge'}</b>` : ''}</a><a href="#grundwerte">Grundwerte</a></nav>
     ${F.live ? `<div class="rs-syscmp"><button type="button" class="cf-btn" data-a="tok-export">${icon('arrow-up-right', 14)}Tokens exportieren</button><span class="rs-tokout"></span></div>` : ''}
     ${F.live && (window.CF_SYSTEMS || []).length > 1 ? `<div class="rs-syscmp">${(window.CF_SYSTEMS || []).filter(x => x.id !== SYS_ID).map(x => `<button type="button" class="cf-btn" data-syscmp="${esc(x.id)}">${icon('grid', 14)}Mit ${esc(x.name)} vergleichen</button>`).join('')}</div>` : ''}
     <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Aktives Regelwerk: <b>${esc(S.name)}</b>, Quelle ist <code>${SYS_JS}</code> – dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
     <dl class="rs-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
     ${all.length ? `<div class="rs-sum">${okAll === all.length ? `<span class="cf-badge ok">${icon('check', 14)}Alle ${all.length} Layouts erfüllen die gemessenen Regeln</span>` : `<span class="cf-badge bad">${okAll} von ${all.length} Layouts erfüllen die gemessenen Regeln</span>${F.live && !draft ? '<button type="button" class="cf-btn" data-a="fix-all">Verstöße von Claude beheben lassen</button>' : ''}`}<div class="b-log ed-log rs-fixlog"></div></div>` : ''}
   </header>
-  <section class="rs-rules">${S.rules.map(ruleHTML).join('')}${rulesEdit ? `<button type="button" class="cf-btn rs-add" data-a="rule-add">${icon('plus', 14)}Neue Regel</button>` : ''}</section>
+  <section class="rs-rules rs-sec" id="regeln">${S.rules.map(ruleHTML).join('')}${rulesEdit ? `<button type="button" class="cf-btn rs-add" data-a="rule-add">${icon('plus', 14)}Neue Regel</button>` : ''}</section>
+  <section class="rs-sec" id="bausteine"><h2 class="rs-h2">Bausteine</h2>${atomsHTML(all)}</section>
+  <section class="rs-sec" id="gelernt"><h2 class="rs-h2">Gelernt</h2>${learnedHTML(all)}</section>
+  <h2 class="rs-h2 rs-sec" id="grundwerte">Grundwerte</h2>
   <section class="rs-ref">
     <div class="rs-panel rs-wide">
       <h2 class="rs-ph">Schriftskala</h2>
@@ -1725,10 +2026,6 @@ function viewRules(keepScroll) {
     <div class="rs-panel">
       <h2 class="rs-ph">Radien</h2>
       ${ruleFigure({ fig: 'radii', checks: [] }, ex)}
-    </div>
-    <div class="rs-panel rs-wide">
-      <h2 class="rs-ph">Präferenzen des Teams</h2>
-      ${prefsHTML()}
     </div>
     <div class="rs-panel rs-wide">
       <h2 class="rs-ph">Farben</h2>
@@ -1790,6 +2087,8 @@ function viewRules(keepScroll) {
     e.currentTarget.disabled = true;
     generate(violationsPrompt(), { log: main.querySelector('.rs-fixlog'), view: 'rules' });
   });
+  bindAtoms(all);
+  bindLearned();
   bindDraft();
   if (keepScroll) scrollTo(0, y);
 }
@@ -2611,6 +2910,20 @@ function viewBuild(keep) {
   }));
   document.getElementById('b-loop').addEventListener('change', e => { loopOn = e.target.checked; if (loopOn && idle) autopilot(buildRun); });
 
+  if (F.job && F.job.status !== 'done') {
+    // Eine Anfrage läuft (oder ist gerade gescheitert): ihr echtes Protokoll zeigen, nichts anderes anstoßen
+    buildRun++;
+    idle = !jobRunning();
+    attachJobLog(document.getElementById('b-log'));
+    if (jobRunning()) {
+      input.value = F.job.view === 'build' ? F.job.prompt : '';
+      document.getElementById('b-stage').innerHTML = pendingHTML();
+      const x = document.getElementById('b-x');
+      x.title = 'Anfrage abbrechen';
+      x.onclick = () => fetch('/api/cancel', { method: 'POST' });
+    }
+    return;
+  }
   const start = state.c && F.byId[state.c] ? { c: F.byId[state.c], l: F.byId[state.c].layouts[selIndex(F.byId[state.c])] } : (keep && lastBuild);
   if (start) { input.value = start.c.name; runBuild(start.c, start.l, keep || STILL); }
   else if (!F.components.length) document.getElementById('b-stage').innerHTML = emptyHTML();
@@ -2678,50 +2991,102 @@ function exactComp(text) {
   return null;
 }
 
-// Schickt eine Anfrage an Claude Code (tools/serve.mjs) und zeigt die Arbeitsschritte live.
+/* ---------- Laufende Anfrage an Claude ---------- */
+// Der Stand einer Anfrage hängt nicht an der Ansicht: Wer während der Arbeit die Ansicht wechselt und zurückkommt,
+// sieht weiter die echten Arbeitsschritte, ebenso nach einem Neuladen (dann über /api/job wieder angehängt).
+// Die Kopfzeile zeigt in jeder Ansicht, dass Claude arbeitet; „Bauen“ zeigt immer das Protokoll.
+F.job = null;
+const jobLogs = new Set();
+function jobHTML(j) {
+  const steps = j.steps.slice(-3);
+  return `<div class="b-head">${esc(j.head)}</div><ol class="b-steps">${steps.map((st, i) => `<li class="${st.done ? 'done' : ''}${i < steps.length - 1 ? ' old' : ''}">${st.done ? icon('check', 14) : '<i class="b-spin"></i>'}<code>${esc(st.code)}</code><span>${st.detail ? `→ ${esc(st.detail)}` : ''}</span></li>`).join('')}</ol>`;
+}
+function paintJob() {
+  const j = F.job;
+  for (const el of [...jobLogs]) {
+    if (!el.isConnected) { jobLogs.delete(el); continue; }
+    if (!j) continue;
+    el.classList.toggle('bad', j.status === 'error');
+    el.innerHTML = jobHTML(j);
+  }
+  const chip = document.getElementById('cf-job');
+  if (!chip) return;
+  const run = j?.status === 'running';
+  chip.hidden = !run || state.view === 'build';
+  if (run) {
+    const cur = j.steps[j.steps.length - 1];
+    chip.innerHTML = `<i class="b-spin"></i><span>Claude arbeitet</span>${cur ? `<code>${esc(cur.code)}</code>` : ''}`;
+    chip.title = `„${j.prompt.split('\n')[0].slice(0, 120)}“ – zum Protokoll in „Bauen“`;
+  }
+}
+function attachJobLog(el) { if (!el) return; jobLogs.add(el); paintJob(); }
+const jobRunning = () => F.job?.status === 'running';
+function jobEvent(ev) {
+  const j = F.job;
+  if (!j) return;
+  const cur = j.steps[j.steps.length - 1];
+  if (ev.type === 'step') { if (cur) cur.done = true; j.steps.push({ code: ev.code, detail: '', done: false }); }
+  else if (ev.type === 'detail') { if (cur) { cur.done = true; cur.detail = ev.text; } }
+  else if (ev.type === 'done') {
+    if (cur) cur.done = true;
+    j.status = 'done';
+    j.head = 'Fertig – lädt neu …';
+    try { sessionStorage.setItem('cf.note', JSON.stringify({ id: ev.id, text: ev.text, cost: ev.cost })); } catch {}
+    const p = new URLSearchParams({ view: j.view || 'build' });
+    if (ev.id) p.set('c', ev.id);
+    setTimeout(() => { location.href = `${location.pathname}?${p}`; }, 500);
+  } else if (ev.type === 'error') {
+    if (cur) cur.done = true;
+    j.status = 'error';
+    j.head = ev.text;
+    window.__cfHold = false;
+    idle = true;
+  }
+  paintJob();
+}
+async function readJob(res) {
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (line) { try { jobEvent(JSON.parse(line)); } catch {} }
+    }
+  }
+  if (jobRunning()) jobEvent({ type: 'error', text: 'Die Verbindung zum Server ist abgerissen.' });
+}
+
+// Schickt eine Anfrage an Claude Code (tools/serve.mjs); die Arbeitsschritte erscheinen in `log` und in „Bauen“.
 async function generate(prompt, { log, view = 'build', onStart, figma = false } = {}) {
-  const L = makeLog(log, 'Claude arbeitet …');
+  F.job = { prompt, view, status: 'running', head: 'Claude arbeitet …', steps: [] };
   window.__cfHold = true;
+  attachJobLog(log);
   onStart?.();
-  let cur = null, finished = false;
-  const onEv = ev => {
-    if (ev.type === 'step') { cur?.done(); cur = L.step(ev.code); }
-    else if (ev.type === 'detail') { cur?.done(ev.text); }
-    else if (ev.type === 'done') {
-      finished = true;
-      cur?.done();
-      L.finish('Fertig – lädt neu …');
-      try { sessionStorage.setItem('cf.note', JSON.stringify({ id: ev.id, text: ev.text, cost: ev.cost })); } catch {}
-      const p = new URLSearchParams({ view });
-      if (ev.id) p.set('c', ev.id);
-      setTimeout(() => { location.href = `${location.pathname}?${p}`; }, 500);
-    } else if (ev.type === 'error') {
-      finished = true;
-      cur?.done();
-      L.finish(ev.text, true);
-      window.__cfHold = false;
-      idle = true;
-    }
-  };
   try {
-    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID, figma }) });
+    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID, figma, view }) });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Der Server antwortet mit ${res.status}.`); }
-    const reader = res.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim();
-        buf = buf.slice(i + 1);
-        if (line) { try { onEv(JSON.parse(line)); } catch {} }
-      }
-    }
-    if (!finished) onEv({ type: 'error', text: 'Die Verbindung zum Server ist abgerissen.' });
+    await readJob(res);
   } catch (e) {
-    if (!finished) onEv({ type: 'error', text: e.message });
+    if (jobRunning()) jobEvent({ type: 'error', text: e.message });
+  }
+}
+
+// Seite neu geladen (oder in einem zweiten Fenster geöffnet), während Claude arbeitet: wieder anhängen
+async function reattachJob(info) {
+  F.job = { prompt: info.prompt || '', view: info.view || 'build', status: 'running', head: 'Claude arbeitet …', steps: [] };
+  window.__cfHold = true;
+  paintJob();
+  try {
+    const res = await fetch('/api/job', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Der Server antwortet mit ${res.status}.`);
+    await readJob(res);
+  } catch (e) {
+    if (jobRunning()) jobEvent({ type: 'error', text: e.message });
   }
 }
 
@@ -2731,6 +3096,7 @@ function pendingHTML() {
 }
 
 function submitBuild(text) {
+  if (jobRunning()) { toast('Claude arbeitet noch an der letzten Anfrage – warte kurz oder brich sie mit × ab.', true); return; }
   const exact = exactComp(text);
   const hit = exact || (!F.live ? findComp(text) : null);
   if (!hit) {
@@ -3250,6 +3616,7 @@ async function boot() {
       if (j?.claude) F.live = j;
     } catch {}
   }
+  if (F.live?.busy) reattachJob(F.live.job || {});
   document.documentElement.style.setProperty('--cf-radius', `${S.radius}px`);
   if (Q.has('still')) document.documentElement.classList.add('is-still');
   initChrome();
