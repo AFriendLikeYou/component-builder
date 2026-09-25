@@ -108,7 +108,8 @@ class El extends HTMLElement {
     const tw = TWEAKS && TWEAKS[l.id];
     inner = applyTweaks(inner, tw);
     const H = (tw && tw.height) || (typeof l.height === 'function' ? l.height(w) : l.height);
-    const cls = \`cf-card\${(l.dark ?? DEF.dark) ? ' is-dark' : ''}\${state !== 'normal' ? \` is-state-\${state}\${state === 'hover' ? ' is-hover' : ''}\` : ''}\`;
+    const dk = l.dark ?? DEF.dark;
+    const cls = \`cf-card\${(typeof dk === 'function' ? dk(SYSTEM) : dk) ? ' is-dark' : ''}\${state !== 'normal' ? \` is-state-\${state}\${state === 'hover' ? ' is-hover' : ''}\` : ''}\`;
     this.#root.innerHTML = \`<div class="\${cls}" data-c="\${DEF.id}" data-l="\${l.id}" style="width:\${w}px;\${H ? \`height:\${H}px;\` : ''}padding:\${l.padding ?? SYSTEM.inset}px">\${inner}</div>\`;
   }
 }

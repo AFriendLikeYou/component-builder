@@ -36,7 +36,7 @@ Factory.register({
        Deklarationen auf oberster Ebene gelten für die Karte selbst,
        &[data-l="woche"] { … } nur für ein Layout. Klassen mit Präfix benennen (.we-…). */
   `,
-  dark: false,                       // dunkle Karte (auch pro Layout möglich)
+  dark: false,                       // dunkle Karte (auch pro Layout); je Regelwerk: dark: S => S.id !== 'zds'
   layouts: [
     { id: 'jetzt', name: 'Jetzt', idea: 'Was fällt zuerst auf?', height: 200, render: (d, h) => `…` },
     // optional pro Layout: padding: 0 (für data-bleed), width (Vielfaches von 8, Standard 352), dark

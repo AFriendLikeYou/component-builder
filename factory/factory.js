@@ -207,7 +207,9 @@ function renderInner(c, l) {
   catch (e) { console.error(e); return `<div class="cf-error">${esc(c.id)} / ${esc(l.id)}: ${esc(e.message)}</div>`; }
 }
 function cardHTML(c, l) {
-  const dark = l.dark ?? c.dark;
+  // dark: true/false oder eine Funktion des Regelwerks (dark: S => S.id !== 'zds' – im ZDS keine dunklen Karten)
+  const dk = l.dark ?? c.dark;
+  const dark = typeof dk === 'function' ? dk(S) : dk;
   const tw = F.tw[c.id]?.[l.id];
   const w = RENDER.width || l.width;
   const H = tw?.height || (typeof l.height === 'function' ? l.height(w) : l.height);
