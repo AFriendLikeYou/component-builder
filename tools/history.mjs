@@ -19,8 +19,18 @@ export function createHistory(root, { busy = () => false } = {}) {
   const reasons = new Set();
   let timer = null;
 
-  function commitNow(message, { claude = false } = {}) {
+  // only: nur diese Dateien committen (ein Claude-Auftrag nimmt nur mit, was Claude selbst geschrieben hat;
+  // Feinschliff, der währenddessen entsteht, bleibt für einen eigenen Commit liegen)
+  function commitNow(message, { claude = false, body = '', only = null } = {}) {
     if (!enabled) return null;
+    if (only) {
+      const mine = changed().filter(f => only.includes(f));
+      if (!mine.length) return null; // Claude hat nichts geändert: kein Commit, auch nicht für andere Änderungen
+      git('add', '-A', '--', ...mine);
+      git('commit', '-q', '-m', message.slice(0, 120), ...(body ? ['-m', body] : []), ...(claude ? ['-m', CLAUDE_TRAILER] : []));
+      if (changed().length) schedule(null, 1500);
+      return message;
+    }
     clearTimeout(timer);
     timer = null;
     const files = changed();
@@ -28,7 +38,7 @@ export function createHistory(root, { busy = () => false } = {}) {
     const subject = message || [...reasons].slice(0, 3).join('; ') || `Geändert: ${files.slice(0, 4).join(', ')}${files.length > 4 ? ' …' : ''}`;
     reasons.clear();
     git('add', '-A');
-    git('commit', '-q', '-m', subject.slice(0, 120), ...(claude ? ['-m', CLAUDE_TRAILER] : []));
+    git('commit', '-q', '-m', subject.slice(0, 120), ...(body ? ['-m', body] : []), ...(claude ? ['-m', CLAUDE_TRAILER] : []));
     return subject;
   }
 

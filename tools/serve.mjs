@@ -60,6 +60,27 @@ function readLeitsaetze() {
 }
 const writeLeitsaetze = list => { fs.mkdirSync(path.dirname(LS_FILE), { recursive: true }); fs.writeFileSync(LS_FILE, `${LS_HEAD}window.CF_LEITSAETZE = ${JSON.stringify(list, null, 2)};\n`); };
 
+// Kennzahlen eines Auftrags aus seinen Arbeitsschritten. Sie stehen als Zeile „Wirkung: …“ in der Commit-Nachricht:
+// Git ist der Speicher, die Zahlen reisen mit dem Verlauf (auch auf GitHub), und Rückgängig löscht sie nicht.
+// pruefungen = Ergebnisse der gezielten Prüfläufe nach dem ersten Schreiben, je „Verstöße:Hinweise“.
+function jobMetrics(info, ev, system) {
+  let wrote = false, steps = 0;
+  const checks = [];
+  info.events.forEach((e, i) => {
+    if (e.type !== 'step') return;
+    steps++;
+    if (/^component\.(write|edit)\(/.test(e.code)) wrote = true;
+    const m = e.code.match(/^rules\.check\((?:"([^"]*)")?\)/);
+    if (!m || !wrote || !m[1] || m[1].startsWith('--')) return; // nur Prüfungen einer Komponente, nach dem ersten Schreiben
+    const d = info.events[i + 1]?.type === 'detail' ? info.events[i + 1].text : '';
+    const v = /^im Raster/.test(d) ? 0 : +((d.match(/^(\d+) Verstöße/) || [])[1] ?? NaN);
+    if (Number.isFinite(v)) checks.push(`${v}:${+((d.match(/(\d+) Hinweise/) || [])[1] || 0)}`);
+  });
+  const kv = { dauer: Math.round((Date.now() - info.started) / 1000), kosten: ev.cost != null ? (+ev.cost).toFixed(2) : '-', schritte: steps, pruefungen: checks.join(',') || '-', komponente: ev.id || '-', regelwerk: system, ansicht: info.view };
+  return `Wirkung: ${Object.entries(kv).map(([k, v]) => `${k}=${v}`).join(' ')}`;
+}
+const parseWirkung = body => { const m = (body || '').match(/^Wirkung: (.+)$/m); return m ? Object.fromEntries(m[1].split(' ').map(p => p.split('='))) : null; };
+
 // Text direkt in der Komponentendatei ersetzen – nur wenn er genau einmal als ganzer String oder Elementtext vorkommt
 function patchText(id, from, to) {
   if (!from || from.length < 2 || /[`'"\\$<>&\n]/.test(to) || /\n/.test(from)) return { ok: false, reason: 'zeichen' };
@@ -107,6 +128,11 @@ const server = http.createServer((req, res) => {
     try { if (!fs.existsSync(path.join(ROOT, '.git', 'cf-hold'))) history.commitNow(); } catch {}
     return sendJSON(res, 200, { ok: history.enabled, items: history.list(40) });
   }
+  // Wirkung: Aufträge, Feinschliff, Rückgängig und Regeländerungen aus dem Verlauf (ohne dabei zu committen)
+  if (url.pathname === '/api/wirkung') {
+    const items = history.enabled ? history.list(400).map(i => ({ sha: i.short, when: i.when, subject: i.subject, kind: i.kind, undone: i.undone, files: i.files, wirkung: parseWirkung(i.body) })) : [];
+    return sendJSON(res, 200, { ok: history.enabled, items });
+  }
   if (url.pathname === '/api/undo' && req.method === 'POST') {
     if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – danach geht Rückgängig wieder.' });
     const r = history.undo();
@@ -149,7 +175,7 @@ const server = http.createServer((req, res) => {
       job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
-        try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true }); } catch (e) { console.error('Verlauf:', e.message); }
+        try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true, body: jobMetrics(info, ev, system), only: Array.isArray(ev.files) ? ev.files : null }); } catch (e) { console.error('Verlauf:', e.message); }
         send(ev); res.end(); info.subs.forEach(r => { try { r.end(); } catch {} }); job = null;
         if (pendingPing) { pendingPing = false; setTimeout(ping, 400); }
       });

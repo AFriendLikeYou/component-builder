@@ -724,3 +724,40 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
   .v-rules .rs-ownstage.cf-card { width: 96px; }
   .rs-ownact { grid-column: 1 / -1; justify-content: flex-start; }
 }
+
+/* Regeln → Wirkung */
+.wk-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.wk-kpi { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 16px; background: #fff; box-shadow: var(--shadow); min-width: 0; }
+.wk-kpi > b { font-size: 24px; line-height: 32px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wk-kpi > span { font-size: 13px; line-height: 18px; }
+.wk-kpi > em { font-style: normal; font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.wk-chartbox { margin-top: 16px; padding: 20px 24px; border-radius: 20px; background: #fff; box-shadow: var(--shadow); }
+.wk-chart { display: block; width: 100%; height: auto; }
+.wk-grid { stroke: rgba(0, 0, 0, .06); }
+.wk-tick, .wk-axis { font: 11px var(--mono); fill: var(--ink-3); }
+.wk-line { fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 2 3; }
+.wk-mark line { stroke: #2f6fea; stroke-width: 1.5; stroke-dasharray: 4 4; opacity: .6; }
+.wk-dot { stroke: #fff; stroke-width: 2; }
+.wk-dot.is-clean { fill: var(--ok); }
+.wk-dot.is-bad { fill: #e9a23b; }
+.wk-dot.is-hand { stroke: var(--ink); stroke-width: 2.5; }
+.wk-dot.is-undone { fill: var(--bad); }
+.wk-none { fill: #fff; stroke: var(--ink-3); stroke-width: 1.5; }
+.wk-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 8px; font-size: 12px; color: var(--ink-2); }
+.wk-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.wk-legend i { width: 10px; height: 10px; border-radius: 50%; }
+.wk-legend i.is-clean { background: var(--ok); }
+.wk-legend i.is-bad { background: #e9a23b; }
+.wk-legend i.is-hand { background: #fff; box-shadow: inset 0 0 0 2.5px var(--ink); }
+.wk-legend i.is-undone { background: var(--bad); }
+.wk-legend i.is-mark { width: 2px; height: 12px; border-radius: 0; background: repeating-linear-gradient(#2f6fea 0 3px, transparent 3px 6px); }
+.wk-tablebox { margin-top: 16px; padding: 8px 24px; border-radius: 20px; background: #fff; box-shadow: var(--shadow); overflow-x: auto; }
+.wk-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+.wk-table th { padding: 10px 8px; text-align: left; font: 500 11px/16px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.wk-table td { padding: 10px 8px; border-top: 1px solid var(--hair); vertical-align: top; white-space: nowrap; }
+.wk-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.wk-table td.wk-task { white-space: normal; max-width: 420px; min-width: 240px; }
+.wk-table td.wk-task .cf-badge { margin-left: 6px; vertical-align: middle; }
+.wk-table tr.is-undone td { color: var(--ink-3); }
+@media (max-width: 1080px) { .wk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .wk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

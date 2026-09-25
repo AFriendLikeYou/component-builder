@@ -55,9 +55,10 @@ function stepFor(tool, input, root) {
 function detailFor(kind, text, isError) {
   if (isError) return 'abgelehnt';
   if (kind === 'check') {
-    if (/Alles im Raster/.test(text)) return 'im Raster';
+    const h = text.match(/(\d+) Hinweise/), hints = h ? ` · ${h[1]} Hinweise` : '';
+    if (/Alles im Raster/.test(text)) return `im Raster${hints}`;
     const m = text.match(/(\d+) Verstöße/);
-    return m ? `${m[1]} Verstöße` : 'geprüft';
+    return m ? `${m[1]} Verstöße${hints}` : 'geprüft';
   }
   if (kind === 'view') return 'angesehen';
   return null;
@@ -120,7 +121,7 @@ export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma 
       const m = text.match(/^ID:\s*([a-z0-9-]+)\s*$/im);
       const fromFiles = touched.map(f => f.match(/^components\/([a-z0-9-]+)\.js$/)?.[1]).filter(id => id && id !== '_index');
       const id = m && m[1] !== '-' ? m[1] : fromFiles[fromFiles.length - 1] || null;
-      resolve({ type: 'done', id, text: text.replace(/^ID:.*$/im, '').trim(), cost: result.total_cost_usd });
+      resolve({ type: 'done', id, text: text.replace(/^ID:.*$/im, '').trim(), cost: result.total_cost_usd, files: [...new Set(touched)].filter(p => p && !p.startsWith('..')) });
     });
   });
 
