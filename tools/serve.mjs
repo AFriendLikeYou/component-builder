@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './_chrome.mjs';
 import { listMedia } from './media.mjs';
-import { createClaudeJob, claudeAvailable } from './claude-bridge.mjs';
+import { createClaudeJob, claudeAvailable, componentsIn } from './claude-bridge.mjs';
 import { renderSystemJS, validSystem } from './system-file.mjs';
 import { createHistory } from './history.mjs';
 import { execFile } from 'node:child_process';
@@ -22,10 +22,56 @@ const TYPES = {
 };
 const RELOAD = `<script>new EventSource('/__reload').onmessage = () => { if (!window.__cfHold) location.reload(); };</script>`;
 const clients = new Set();
-let job = null, pendingPing = false;
-// Die laufende Anfrage mit allen bisherigen Ereignissen: Eine neu geladene Seite hängt sich über /api/job wieder an
-let jobInfo = null;
-const history = createHistory(ROOT, { busy: () => !!job });
+// Laufende Claude-Aufträge (bei Stapeln bis zu CF_PARALLEL gleichzeitig) und was die Oberfläche davon sieht:
+// jobInfo = der Einzelauftrag oder der Stapel mit allen bisherigen Ereignissen; eine neu geladene Seite hängt sich über /api/job wieder an.
+const running = new Set();
+let pendingPing = false, jobInfo = null, cancelBatch = null;
+const busy = () => running.size > 0 || !!jobInfo;
+const history = createHistory(ROOT, { busy: () => running.size > 0 });
+const PARALLEL = Math.max(1, +process.env.CF_PARALLEL || 3);
+
+// Tempo: welches Modell ein Auftrag bekommt. CF_MODEL legt eines fest. Sonst „schnell“ = Sonnet, „gruendlich“ = Opus,
+// „auto“ (Standard) = Opus für Neues (keine bestehende Komponente im Auftrag), Sonnet für alles an Bestehendem.
+function pickModel(prompt, tempo) {
+  if (process.env.CF_MODEL) return process.env.CF_MODEL;
+  if (tempo === 'schnell') return 'sonnet';
+  if (tempo === 'gruendlich') return 'opus';
+  return componentsIn(ROOT, prompt).length ? 'sonnet' : 'opus';
+}
+// Ein Auftrag an Claude: Ereignisse gehen an onEvent (ohne das Abschlussereignis), danach Commit mit Kennzahlen.
+// Liefert das Abschlussereignis ({type:'done'} oder {type:'error'}).
+function runJob(prompt, { system, view, context, tempo, figma = false, onEvent }) {
+  const model = pickModel(prompt, tempo);
+  const info = { prompt, view, context, model, started: Date.now(), events: [] };
+  const job = createClaudeJob(prompt, { root: ROOT, model, system, figma, context, onEvent: ev => { info.events.push(ev); onEvent(ev); } });
+  running.add(job);
+  console.log(`→ Claude (${model}${context ? ', mit Kontext' : ''}): ${prompt.split('\n')[0].slice(0, 140)}`);
+  return job.done.then(ev => {
+    running.delete(job);
+    console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
+    try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true, body: jobMetrics(info, ev, system), only: Array.isArray(ev.files) ? ev.files : null }); } catch (e) { console.error('Verlauf:', e.message); }
+    return ev;
+  });
+}
+const openStream = (res, info) => {
+  res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
+  return ev => { info.events.push(ev); const line = JSON.stringify(ev) + '\n'; for (const r of [res, ...info.subs]) { try { r.write(line); } catch {} } };
+};
+const closeStream = (res, info) => { res.end(); info.subs.forEach(r => { try { r.end(); } catch {} }); if (jobInfo === info) jobInfo = null; if (pendingPing && !busy()) { pendingPing = false; setTimeout(ping, 400); } };
+const parseJobBody = body => {
+  const o = { prompt: '', system: 'fabrik', figma: false, view: 'build', context: process.env.CF_CONTEXT !== '0', tempo: 'auto', items: null };
+  try {
+    const j = JSON.parse(body);
+    o.prompt = String(j.prompt || '').trim();
+    if (/^[a-z0-9-]+$/.test(j.system || '')) o.system = j.system;
+    o.figma = j.figma === true;
+    if (/^[a-z]+$/.test(j.view || '')) o.view = j.view;
+    if (typeof j.context === 'boolean') o.context = j.context;
+    if (['auto', 'schnell', 'gruendlich'].includes(j.tempo)) o.tempo = j.tempo;
+    if (Array.isArray(j.items)) o.items = j.items.map(x => ({ prompt: String(x.prompt || '').trim(), label: String(x.label || '').slice(0, 60), lock: /^[a-z0-9-]+$/.test(x.lock || '') ? x.lock : null })).filter(x => x.prompt).slice(0, 40);
+  } catch {}
+  return o;
+};
 const muted = new Map(); // Dateien, die die Seite selbst schreibt: kein Neuladen auslösen
 const readBody = req => new Promise(res => { let b = ''; req.on('data', d => { b += d; if (b.length > 500000) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b)); } catch { res(null); } }); });
 const sendJSON = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
@@ -71,14 +117,14 @@ function jobMetrics(info, ev, system) {
     if (e.type !== 'step') return;
     steps++;
     if (/^(file\.read|rules\.read|files\.find|files\.search|shell)\(/.test(e.code)) reads++;
-    if (/^component\.(write|edit)\(/.test(e.code)) wrote = true;
-    const m = e.code.match(/^rules\.check\((?:"([^"]*)")?\)/);
+    if (/^component\.(write|edit|new)\(/.test(e.code)) wrote = true;
+    const m = e.code.match(/^rules\.(?:check|verify)\((?:"([^"]*)")?\)/);
     if (!m || !wrote || !m[1] || m[1].startsWith('--')) return; // nur Prüfungen einer Komponente, nach dem ersten Schreiben
     const d = info.events[i + 1]?.type === 'detail' ? info.events[i + 1].text : '';
     const v = /^im Raster/.test(d) ? 0 : +((d.match(/^(\d+) Verstöße/) || [])[1] ?? NaN);
     if (Number.isFinite(v)) checks.push(`${v}:${+((d.match(/(\d+) Hinweise/) || [])[1] || 0)}`);
   });
-  const kv = { dauer: Math.round((Date.now() - info.started) / 1000), kosten: ev.cost != null ? (+ev.cost).toFixed(2) : '-', schritte: steps, gelesen: reads, abgelehnt: denied, kontext: info.context ? 'ja' : 'nein', pruefungen: checks.join(',') || '-', komponente: ev.id || '-', regelwerk: system, ansicht: info.view };
+  const kv = { dauer: Math.round((Date.now() - info.started) / 1000), kosten: ev.cost != null ? (+ev.cost).toFixed(2) : '-', schritte: steps, gelesen: reads, abgelehnt: denied, kontext: info.context ? 'ja' : 'nein', modell: info.model || 'standard', pruefungen: checks.join(',') || '-', komponente: ev.id || '-', regelwerk: system, ansicht: info.view };
   return `Wirkung: ${Object.entries(kv).map(([k, v]) => `${k}=${v}`).join(' ')}`;
 }
 const parseWirkung = body => { const m = (body || '').match(/^Wirkung: (.+)$/m); return m ? Object.fromEntries(m[1].split(' ').map(p => p.split('='))) : null; };
@@ -109,7 +155,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/status') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job, history: history.enabled, job: job && jobInfo ? { prompt: jobInfo.prompt, view: jobInfo.view, started: jobInfo.started } : null }));
+    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: busy(), history: history.enabled, job: jobInfo ? { prompt: jobInfo.prompt, view: jobInfo.view, started: jobInfo.started, batch: !!jobInfo.batch } : null }));
   }
   // Zeitreise: /@<commit>/… liefert die Fabrik genau so, wie sie in diesem Commit war (für Vorher/Nachher)
   const at = url.pathname.match(/^\/@([0-9a-f]{7,40})(\/.*)?$/);
@@ -136,51 +182,78 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, 200, { ok: history.enabled, items });
   }
   if (url.pathname === '/api/undo' && req.method === 'POST') {
-    if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – danach geht Rückgängig wieder.' });
+    if (busy()) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – danach geht Rückgängig wieder.' });
     const r = history.undo();
     if (r.ok) console.log(`↶ Rückgängig: ${r.subject}`);
     return sendJSON(res, 200, r);
   }
   if (url.pathname === '/api/restore' && req.method === 'POST') {
-    if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade.' });
+    if (busy()) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade.' });
     readBody(req).then(b => { const r = history.restore(b?.sha); if (r.ok) console.log(`↺ ${r.subject}`); sendJSON(res, 200, r); });
     return;
   }
   if (url.pathname === '/api/job') {
     res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
-    if (!job || !jobInfo) { res.write(JSON.stringify({ type: 'error', text: 'Die Anfrage ist schon beendet.' }) + '\n'); return res.end(); }
+    if (!jobInfo) { res.write(JSON.stringify({ type: 'error', text: 'Die Anfrage ist schon beendet.' }) + '\n'); return res.end(); }
     for (const ev of jobInfo.events) res.write(JSON.stringify(ev) + '\n');
     jobInfo.subs.add(res);
     req.on('close', () => jobInfo?.subs.delete(res));
     return;
   }
   if (url.pathname === '/api/cancel' && req.method === 'POST') {
-    job?.cancel();
+    cancelBatch?.();
+    for (const j of running) j.cancel();
     res.writeHead(204); return res.end();
   }
   if (url.pathname === '/api/generate' && req.method === 'POST') {
-    if (job) { res.writeHead(409, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: 'Claude arbeitet schon an einer Anfrage.' })); }
+    if (busy()) return sendJSON(res, 409, { error: 'Claude arbeitet schon an einer Anfrage.' });
     let body = '';
     req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
     req.on('end', () => {
-      let prompt = '', system = 'fabrik', figma = false, view = 'build', context = process.env.CF_CONTEXT === '1';
-      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; if (/^[a-z]+$/.test(j.view || '')) view = j.view; if (typeof j.context === 'boolean') context = j.context; } catch {}
-      if (!prompt) { res.writeHead(400); return res.end(); }
-      res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
-      const info = jobInfo = { prompt, view, context, started: Date.now(), events: [], subs: new Set() };
-      const send = ev => {
-        info.events.push(ev);
-        const line = JSON.stringify(ev) + '\n';
-        for (const r of [res, ...info.subs]) { try { r.write(line); } catch {} }
+      const o = parseJobBody(body);
+      if (!o.prompt) { res.writeHead(400); return res.end(); }
+      const info = jobInfo = { prompt: o.prompt, view: o.view, started: Date.now(), events: [], subs: new Set() };
+      const send = openStream(res, info);
+      runJob(o.prompt, { ...o, onEvent: send }).then(ev => { send(ev); closeStream(res, info); });
+    });
+    return;
+  }
+  // Stapel: mehrere Aufträge, bis zu CF_PARALLEL gleichzeitig; Aufträge mit derselben Sperre (Komponente) laufen nacheinander.
+  // Ereignisse tragen i (Index im Stapel); dazu {type:'batch', items} am Anfang und {type:'item', i, status} je Wechsel.
+  if (url.pathname === '/api/batch' && req.method === 'POST') {
+    if (busy()) return sendJSON(res, 409, { error: 'Claude arbeitet schon an einer Anfrage.' });
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 400000) req.destroy(); });
+    req.on('end', () => {
+      const o = parseJobBody(body);
+      if (!o.items?.length) { res.writeHead(400); return res.end(); }
+      const info = jobInfo = { prompt: `${o.items.length} Aufträge`, view: o.view, started: Date.now(), events: [], subs: new Set(), batch: true };
+      const send = openStream(res, info);
+      const queue = o.items.map((it, i) => ({ ...it, i }));
+      const locks = new Set();
+      let done = 0, ok = 0, stopped = false;
+      cancelBatch = () => { stopped = true; for (const q of queue.splice(0)) { send({ type: 'item', i: q.i, status: 'abgebrochen' }); done++; } };
+      send({ type: 'batch', items: o.items.map((it, i) => ({ i, label: it.label || it.prompt.split('\n')[0].slice(0, 60), status: 'wartet' })) });
+      console.log(`⇉ Stapel: ${o.items.length} Aufträge, bis zu ${PARALLEL} gleichzeitig`);
+      const finish = () => { cancelBatch = null; send({ type: 'done', batch: true, text: `${ok} von ${o.items.length} Aufträgen fertig${stopped ? ' (abgebrochen)' : ''}.` }); closeStream(res, info); };
+      const next = () => {
+        while (!stopped && running.size < PARALLEL) {
+          const k = queue.findIndex(q => !q.lock || !locks.has(q.lock));
+          if (k < 0) break;
+          const q = queue.splice(k, 1)[0];
+          if (q.lock) locks.add(q.lock);
+          send({ type: 'item', i: q.i, status: 'läuft' });
+          runJob(q.prompt, { ...o, onEvent: ev => send({ ...ev, i: q.i }) }).then(ev => {
+            if (q.lock) locks.delete(q.lock);
+            if (ev.type === 'done') ok++;
+            done++;
+            send({ type: 'item', i: q.i, status: ev.type === 'done' ? 'fertig' : 'fehler', text: String(ev.text || '').slice(0, 300), id: ev.id || null });
+            if (done >= o.items.length) finish(); else next();
+          });
+        }
+        if (stopped && !running.size && done >= o.items.length) finish();
       };
-      console.log(`→ Claude: ${prompt}`);
-      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, context, onEvent: send });
-      job.done.then(ev => {
-        console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
-        try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true, body: jobMetrics(info, ev, system), only: Array.isArray(ev.files) ? ev.files : null }); } catch (e) { console.error('Verlauf:', e.message); }
-        send(ev); res.end(); info.subs.forEach(r => { try { r.end(); } catch {} }); job = null;
-        if (pendingPing) { pendingPing = false; setTimeout(ping, 400); }
-      });
+      next();
     });
     return;
   }
@@ -234,7 +307,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/leitsatz' && req.method === 'POST') {
     readBody(req).then(b => {
-      if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – gleich noch einmal.' });
+      if (busy()) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – gleich noch einmal.' });
       const NEXT = { confirm: 'bestaetigt', drop: 'verworfen', unconfirm: 'vorschlag', rule: 'regel' };
       if (!b || typeof b.id !== 'string' || !NEXT[b.action]) return sendJSON(res, 400, { ok: false, error: 'Ungültige Anfrage' });
       let list;
@@ -316,7 +389,7 @@ server.listen(PORT, '127.0.0.1', () => console.log(`Component Factory: http://lo
 
 let timer;
 // Während Claude arbeitet, nicht neu laden – erst wenn die Anfrage fertig ist.
-const ping = () => { history.schedule(null, 3000); if (job) { pendingPing = true; return; } clearTimeout(timer); timer = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150); };
+const ping = () => { history.schedule(null, 3000); if (busy()) { pendingPing = true; return; } clearTimeout(timer); timer = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150); };
 for (const dir of ['components', 'factory', 'media', 'systems']) fs.mkdirSync(path.join(ROOT, dir), { recursive: true });
 for (const dir of ['components', 'factory', 'media']) fs.watch(path.join(ROOT, dir), (_, name) => { if (!name || name.startsWith('.')) return; if ((muted.get(name) || 0) > Date.now()) return; ping(); });
 fs.watch(ROOT, (_, name) => { if (name === 'index.html') ping(); });

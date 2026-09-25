@@ -1248,7 +1248,7 @@ function familyPrompt(c, want) {
   return `Komponentenfamilie und Zustände für „${c.name}“ (components/${c.id}.js), dieselbe visuelle Logik wie die bestehenden Layouts:
 ${fam.length ? `- Familie: ergänze Layouts mit ${fam.map(f => `family: "${f}"`).join(' und ')}. ${fam.includes('listenzeile') ? 'Listenzeile = eine Zeile in einer Liste, volle Kartenbreite, flach (etwa 72–96 px hoch), dieselben Inhalte knapp. ' : ''}${fam.includes('teaser') ? 'Teaser = redaktioneller Anreißer: Bild, Überschrift, Unterzeile. ' : ''}Bestehende Layouts bekommen family: "karte".
 ` : ''}${st.length ? `- Zustände: setze states: [${st.map(x => `"${x}"`).join(', ')}] an der Komponente. render(d, h) fragt h.state ab: ${st.includes('loading') ? '"loading" = Skelett in den echten Flächen, gleiche Maße; ' : ''}${st.includes('empty') ? '"empty" = freundlicher Leerzustand mit einer Handlung; ' : ''}${st.includes('error') ? '"error" = kurze Fehlermeldung mit „Erneut versuchen“; ' : ''}${st.includes('hover') ? '"hover" = Bedienbares hervorheben, Stil über die Klasse .is-hover an der Karte (zusätzlich zu :hover); ' : ''}jeder Zustand passt in dieselbe Höhe und erfüllt die Regeln.
-` : ''}Prüfe mit node tools/check.mjs ${c.id} --states --system ${SYS_ID}.`;
+` : ''}Prüfe mit node tools/verify.mjs ${c.id}.`;
 }
 function bindStates(sec, c) {
   const bar = sec.querySelector('.cf-statebar'), grid = sec.querySelector('.cf-lay-grid');
@@ -1697,6 +1697,17 @@ function bindDraft() {
   });
 }
 
+// Ein Auftrag je Komponente mit Verstößen – als Stapel laufen sie parallel
+function violationsItems() {
+  const by = new Map();
+  for (const b of Object.values(F.bps)) if (!b.ok) { if (!by.has(b.c)) by.set(b.c, []); by.get(b.c).push(b); }
+  return [...by].map(([cid, bs]) => ({
+    lock: cid, label: F.byId[cid]?.name || cid,
+    prompt: `Aktives Regelwerk: ${S.name} (${SYS_JS}). Die Komponente „${F.byId[cid]?.name || cid}“ (components/${cid}.js) verstößt gegen Regeln. Passe sie an, ohne ihren Charakter zu verändern; gesperrte Flächen (locks in components/${cid}.tweaks.js) nicht anfassen. Arbeite nur an dieser Komponente. Verstöße:
+${bs.map(b => `- ${b.l}: ${b.violations.map(v => `${v.rule}: ${v.msg}`).join('; ')}`).join('\n')}
+Prüfe mit node tools/verify.mjs ${cid}, bis alles ✓ ist.`,
+  }));
+}
 function violationsPrompt() {
   const lines = Object.values(F.bps).filter(b => !b.ok).map(b => `- ${b.c} / ${b.l}: ${b.violations.map(v => `${v.rule}: ${v.msg}`).join('; ')}`);
   return `Aktives Regelwerk: ${S.name} (${SYS_JS}). Die Regeln darin wurden geändert oder Komponenten verstoßen dagegen. Passe alle betroffenen Komponenten an die aktuellen Regeln an, ohne ihren Charakter zu verändern; gesperrte Flächen (locks in components/<id>.tweaks.js) nicht anfassen. Aktuelle Verstöße:
@@ -1734,7 +1745,7 @@ function ownSwitchPrompt(groups) {
   };
   return `Stelle Eigenbauten auf die Bausteine des aktiven Regelwerks um (atoms in ${SYS_JS}, CSS in ${SYS_CSS}; dieselben Klassen gibt es in allen Regelwerken).
 ${[...byC].map(([id, gs]) => `components/${id}.js:\n${gs.map(line).join('\n')}`).join('\n')}${icons.length ? `\nEigene Icons: ${icons.map(g => `„${iconName(g)}“ in components/${g.c.id}.js`).join(', ')} – über h.icon nehmen, fehlt eins im Icon-Satz, nimm das nächste passende und nenne es am Ende.` : ''}
-Form und Höhe kommen aus dem Baustein (passende Variante wählen, z. B. .lg für 48 px); komponentenspezifische Farben und Abstände dürfen bleiben. Verhalten und Hover-Stile erhalten, danach nicht mehr benutztes CSS entfernen. Fehlt eine Größe oder Form im Baustein, nimm die nächste passende Variante und nenne das am Ende. Prüfe mit node tools/check.mjs <id> --states --system ${SYS_ID} und sieh dir die Screenshots an.`;
+Form und Höhe kommen aus dem Baustein (passende Variante wählen, z. B. .lg für 48 px); komponentenspezifische Farben und Abstände dürfen bleiben. Verhalten und Hover-Stile erhalten, danach nicht mehr benutztes CSS entfernen. Fehlt eine Größe oder Form im Baustein, nimm die nächste passende Variante und nenne das am Ende. Prüfe mit node tools/verify.mjs <id> und sieh dir das Bild an.`;
 }
 function ownAdoptPrompt(g) {
   if (g.kind === 'icon') {
@@ -1858,7 +1869,13 @@ function bindAtoms(all) {
     main.querySelectorAll('.rs-own button').forEach(b => { b.disabled = true; });
     generate(prompt, { log, view: 'rules' });
   };
-  main.querySelector('[data-a="own-all"]')?.addEventListener('click', () => run(ownSwitchPrompt(groups), main.querySelector('[data-ownlog="all"]')));
+  main.querySelector('[data-a="own-all"]')?.addEventListener('click', () => {
+    const log = main.querySelector('[data-ownlog="all"]');
+    const ids = [...new Set(groups.map(g => g.c.id))];
+    if (!F.live) return copyHint(log, 'Anweisung für Claude Code', ownSwitchPrompt(groups));
+    main.querySelectorAll('.rs-own button').forEach(b => { b.disabled = true; });
+    generateBatch(ids.map(id => ({ lock: id, label: F.byId[id]?.name || id, prompt: ownSwitchPrompt(groups.filter(g => g.c.id === id)) })), { log, view: 'rules' });
+  });
   main.querySelectorAll('[data-own]').forEach(b => b.addEventListener('click', () => {
     const g = groups[+b.dataset.own];
     run(b.dataset.act === 'adopt' ? ownAdoptPrompt(g) : ownSwitchPrompt([g]), main.querySelector(`[data-ownlog="${b.dataset.own}"]`));
@@ -2269,7 +2286,7 @@ function viewRules(keepScroll) {
   }));
   main.querySelector('[data-a="fix-all"]')?.addEventListener('click', e => {
     e.currentTarget.disabled = true;
-    generate(violationsPrompt(), { log: main.querySelector('.rs-fixlog'), view: 'rules' });
+    generateBatch(violationsItems(), { log: main.querySelector('.rs-fixlog'), view: 'rules' });
   });
   bindAtoms(all);
   bindLearned();
@@ -2875,7 +2892,7 @@ ${tweaks.map(i => `- ${i.label}: ${i.desc}`).join("\n")}
 ` : ""}${notes.length ? `Offene Notizen, gleich mit erledigen:
 ${notes.map(i => `- ${i.label.replace("Notiz zu ", "")}: ${i.desc}`).join("\n")}
 ` : ""}${locks.length ? `Gesperrt, nicht verändern: ${locks.map(n => `„${n}“`).join(", ")}.
-` : ""}Nur dieses Layout ändern, außer der Wunsch meint ausdrücklich alle. Prüfe mit node tools/check.mjs ${ed.c.id}.`;
+` : ""}Nur dieses Layout ändern, außer der Wunsch meint ausdrücklich alle. Prüfe mit node tools/verify.mjs ${ed.c.id} ${ed.l.id}.`;
 }
 
 function seg(name, value, options, disabled) {
@@ -3080,7 +3097,7 @@ function viewBuild(keep) {
       <input id="b-in" placeholder="${F.live ? 'Neue Komponente beschreiben oder eine ändern …' : 'Komponente erzeugen …'}" spellcheck="false" aria-label="Komponente">
       <button type="submit" class="b-go" aria-label="Erzeugen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     </form>
-    ${F.live ? `<p class="b-live"><i></i>Verbunden mit Claude Code · Anfragen laufen über dein Konto</p>` : ''}
+    ${F.live ? `<div class="b-tempo"><span>Tempo</span>${seg('tempo', store.get('tempo', 'auto'), [['auto', 'Automatisch', 'Opus für Neues, Sonnet für Änderungen an Bestehendem'], ['schnell', 'Schnell', 'Sonnet für alles'], ['gruendlich', 'Gründlich', 'Opus für alles']])}</div><p class="b-live"><i></i>Verbunden mit Claude Code · Anfragen laufen über dein Konto</p>` : ''}
     <p class="b-meta">${esc(S.name)} · ${U > 1 ? `${U}-px-Raster` : 'Abstandsskala'} · Inset ${S.inset} · ${Object.keys(S.families).map(shortFam).join(' + ')} · max. ${S.limits.sizes} Größen</p>
     <div class="b-chips" id="b-chips">${F.components.map(c => `<button data-c="${esc(c.id)}">${esc(c.name)}</button>`).join('')}<label class="b-loop"><input type="checkbox" id="b-loop"${loopOn ? ' checked' : ''}><span>Endlos</span></label></div>
   </div>
@@ -3088,6 +3105,7 @@ function viewBuild(keep) {
   const form = document.getElementById('b-form'), input = document.getElementById('b-in');
   form.addEventListener('submit', e => { e.preventDefault(); submitBuild(input.value); });
   document.getElementById('b-x').addEventListener('click', () => { input.value = ''; input.focus(); });
+  main.querySelectorAll('[data-seg="tempo"]').forEach(b => b.addEventListener('click', () => { store.set('tempo', b.dataset.v); main.querySelectorAll('[data-seg="tempo"]').forEach(x => x.classList.toggle('on', x === b)); }));
   document.querySelectorAll('#b-chips button').forEach(b => b.addEventListener('click', () => {
     const c = F.byId[b.dataset.c];
     input.value = c.name;
@@ -3182,7 +3200,12 @@ function exactComp(text) {
 // Die Kopfzeile zeigt in jeder Ansicht, dass Claude arbeitet; „Bauen“ zeigt immer das Protokoll.
 F.job = null;
 const jobLogs = new Set();
+const ITEM_ICON = { wartet: '<i class="b-wait"></i>', läuft: '<i class="b-spin"></i>', fertig: null, fehler: '<i class="b-fail">✕</i>', abgebrochen: '<i class="b-fail">–</i>' };
 function jobHTML(j) {
+  if (j.items) {
+    const done = j.items.filter(x => x.status === 'fertig').length;
+    return `<div class="b-head">${esc(j.head)}${j.status === 'running' ? ` · ${done} von ${j.items.length} fertig` : ''}</div><ol class="b-steps b-batch">${j.items.map(x => `<li class="${x.status === 'fertig' ? 'done' : ''}${x.status === 'wartet' ? ' old' : ''}">${x.status === 'fertig' ? icon('check', 14) : ITEM_ICON[x.status] || ''}<b>${esc(x.label)}</b><code>${esc(x.status === 'läuft' ? x.step || 'startet …' : x.status === 'fertig' ? '' : x.status)}</code></li>`).join('')}</ol>`;
+  }
   const steps = j.steps.slice(-3);
   return `<div class="b-head">${esc(j.head)}</div><ol class="b-steps">${steps.map((st, i) => `<li class="${st.done ? 'done' : ''}${i < steps.length - 1 ? ' old' : ''}">${st.done ? icon('check', 14) : '<i class="b-spin"></i>'}<code>${esc(st.code)}</code><span>${st.detail ? `→ ${esc(st.detail)}` : ''}</span></li>`).join('')}</ol>`;
 }
@@ -3200,22 +3223,29 @@ function paintJob() {
   chip.hidden = !run || state.view === 'build';
   if (run) {
     const cur = j.steps[j.steps.length - 1];
-    chip.innerHTML = `<i class="b-spin"></i><span>Claude arbeitet</span>${cur ? `<code>${esc(cur.code)}</code>` : ''}`;
+    const prog = j.items ? `<code>${j.items.filter(x => x.status === 'fertig').length} von ${j.items.length} fertig</code>` : cur ? `<code>${esc(cur.code)}</code>` : '';
+    chip.innerHTML = `<i class="b-spin"></i><span>Claude arbeitet${j.model && !j.items ? ` · ${esc(MODEL_NAME[j.model] || j.model)}` : ''}</span>${prog}`;
     chip.title = `„${j.prompt.split('\n')[0].slice(0, 120)}“ – zum Protokoll in „Bauen“`;
   }
 }
 function attachJobLog(el) { if (!el) return; jobLogs.add(el); paintJob(); }
 const jobRunning = () => F.job?.status === 'running';
+const MODEL_NAME = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku', standard: 'Standardmodell' };
 function jobEvent(ev) {
   const j = F.job;
   if (!j) return;
+  // Stapel: Einträge und ihre Arbeitsschritte (Ereignisse mit i)
+  if (ev.type === 'batch') { j.items = ev.items.map(x => ({ ...x })); paintJob(); return; }
+  if (ev.type === 'item') { const it = j.items?.[ev.i]; if (it) { it.status = ev.status; if (ev.text) it.text = ev.text; } paintJob(); return; }
+  if (ev.i != null && j.items) { const it = j.items[ev.i]; if (it && ev.type === 'step') it.step = ev.code; if (it && ev.type === 'meta') it.model = ev.model; paintJob(); return; }
+  if (ev.type === 'meta') { j.model = ev.model; j.head = `Claude arbeitet · ${MODEL_NAME[ev.model] || ev.model}${ev.context ? ' · mit Kontext' : ''} …`; paintJob(); return; }
   const cur = j.steps[j.steps.length - 1];
   if (ev.type === 'step') { if (cur) cur.done = true; j.steps.push({ code: ev.code, detail: '', done: false }); }
   else if (ev.type === 'detail') { if (cur) { cur.done = true; cur.detail = ev.text; } }
   else if (ev.type === 'done') {
     if (cur) cur.done = true;
     j.status = 'done';
-    j.head = 'Fertig – lädt neu …';
+    j.head = ev.batch ? `${ev.text} Lädt neu …` : 'Fertig – lädt neu …';
     try { sessionStorage.setItem('cf.note', JSON.stringify({ id: ev.id, text: ev.text, cost: ev.cost })); } catch {}
     const p = new URLSearchParams({ view: j.view || 'build' });
     if (ev.id) p.set('c', ev.id);
@@ -3253,7 +3283,22 @@ async function generate(prompt, { log, view = 'build', onStart, figma = false } 
   attachJobLog(log);
   onStart?.();
   try {
-    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID, figma, view }) });
+    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID, figma, view, tempo: store.get('tempo', 'auto') }) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Der Server antwortet mit ${res.status}.`); }
+    await readJob(res);
+  } catch (e) {
+    if (jobRunning()) jobEvent({ type: 'error', text: e.message });
+  }
+}
+
+// Stapel: mehrere Aufträge (items: [{ prompt, label, lock }]), der Server lässt bis zu drei gleichzeitig laufen
+async function generateBatch(items, { log, view = 'build' } = {}) {
+  if (items.length === 1) return generate(items[0].prompt, { log, view });
+  F.job = { prompt: `${items.length} Aufträge`, view, status: 'running', head: `${items.length} Aufträge, bis zu drei gleichzeitig`, steps: [], items: items.map(it => ({ label: it.label, status: 'wartet' })) };
+  window.__cfHold = true;
+  attachJobLog(log);
+  try {
+    const res = await fetch('/api/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items, system: SYS_ID, view, tempo: store.get('tempo', 'auto') }) });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Der Server antwortet mit ${res.status}.`); }
     await readJob(res);
   } catch (e) {
@@ -3263,7 +3308,7 @@ async function generate(prompt, { log, view = 'build', onStart, figma = false } 
 
 // Seite neu geladen (oder in einem zweiten Fenster geöffnet), während Claude arbeitet: wieder anhängen
 async function reattachJob(info) {
-  F.job = { prompt: info.prompt || '', view: info.view || 'build', status: 'running', head: 'Claude arbeitet …', steps: [] };
+  F.job = { prompt: info.prompt || '', view: info.view || 'build', status: 'running', head: info.batch ? info.prompt : 'Claude arbeitet …', steps: [], ...(info.batch ? { items: [] } : {}) };
   window.__cfHold = true;
   paintJob();
   try {

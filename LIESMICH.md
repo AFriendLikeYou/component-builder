@@ -27,13 +27,18 @@ Das startet die Seite mit Live-Reload und verbindet die Eingabezeile mit deinem 
   - **Wirkung**: ob die Regeln Claude besser machen. Je Auftrag Verstöße im ersten Wurf und am Ende, Prüfläufe, Dauer und Kosten (stehen in der Commit-Nachricht), dazu Handarbeit danach, Zurückgenommenes und behaltene Varianten. Die Kurve markiert, wo Regeln geändert wurden – sinkt sie danach, hat die Änderung geholfen.
   - **Gelernt**: was Claude aus euren Rückmeldungen ableitet. **Leitsätze** mit ihren Belegen – ein Vorschlag gilt erst, wenn du ihn **bestätigst**; bestätigte liest Claude wie Soll-Regeln und du kannst sie **zur Regel machen**. Dazu die Entscheidungen zu Varianten, akzeptierte Ausnahmen und offener Feinschliff. **Leitsätze neu ableiten** lässt Claude alles noch einmal durchgehen.
 
-**Regeln oder Bausteine ergänzen?** Schritt für Schritt in [ANLEITUNG.md](ANLEITUNG.md): wo was liegt, wie neue Regeln und Messungen entstehen, wie Bausteine angelegt oder fürs ZDS abgewandelt werden und wie sie nach Figma kommen.
+**Regeln oder Bausteine ergänzen?** Schritt für Schritt in [ANLEITUNG.md](ANLEITUNG.md): wo was liegt, wie neue Regeln und Messungen entstehen, wie Bausteine angelegt oder abgewandelt werden und wie sie nach Figma kommen.
 
-## Regelwerke: Fabrik und ZDS
+## Regelwerk
 
-Oben rechts schaltest du zwischen zwei Regelwerken um. **Fabrik** ist das 8-px-System dieses Experiments. **ZDS** ist das ZEIT Design System: Tablet Gothic und Zeit Tiemann Schmal, Farben, Grade, Zeilenhöhen, Radien und Abstände aus dem öffentlichen Paket `@zeitonline/design-system`, dazu die Vorgaben „keine dunklen Flächen“ und „Tiemann nur für Überschriften“. Dieselben Komponenten erscheinen dann in ZDS und werden nach dessen Regeln gemessen. In „Regeln“ vergleicht **Mit ZDS vergleichen** beide Systeme nebeneinander; `node tools/check.mjs --system zds` prüft im Terminal.
+Die Fabrik arbeitet mit einem Regelwerk, `systems/fabrik/` (8-px-Raster, Inter und Libre Baskerville). Weitere Regelwerke sind technisch möglich und erscheinen dann oben als Umschalter. Das ZEIT Design System ist in ein eigenes Projekt gewandert; sein letzter Stand hier liegt im Git-Tag `zds-regelwerk`.
 
-Die ZEIT-Schriften liegen nur lokal in `systems/zds/fonts/` (Lizenz, nicht im Repository). Fehlen sie, zeigt ZDS Ersatzschriften.
+## Tempo
+
+- **Tempo** in „Bauen“: *Automatisch* nimmt Opus für neue Komponenten und Sonnet für alles an Bestehendem (Varianten, Änderungen, Aufräumen); *Schnell* immer Sonnet, *Gründlich* immer Opus. Die Wahl gilt für alle Aufträge aus der Fabrik.
+- Claude bekommt zu jedem Auftrag das Regelwerk und die betroffenen Komponenten gleich mit (Kontextpaket) und prüft mit einem Befehl (`node tools/verify.mjs <id>`): Prüfung und ein verkleinerter Screenshot, den Claude jedes Mal ansieht.
+- **Verstöße beheben** und **Alle auf Bausteine umstellen** laufen als Stapel: ein Auftrag je Komponente, bis zu drei gleichzeitig. Das Protokoll zeigt jeden Auftrag mit seinem Stand.
+- Wie sich das auswirkt, zeigt „Regeln“ → Wirkung.
 
 ## Verlauf
 

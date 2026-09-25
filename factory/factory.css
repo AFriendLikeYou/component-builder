@@ -762,3 +762,11 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 @media (max-width: 1080px) { .wk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .wk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .wk-compare { margin-top: 16px; }
+
+/* Tempo und Stapel */
+.b-tempo { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px 0 0; font-size: 12px; color: var(--ink-2); }
+.b-batch li { gap: 10px; }
+.b-batch li > b { font: 500 12px/20px var(--ui); color: var(--ink); min-width: 120px; }
+.b-batch li > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--ink-3); }
+.b-wait { width: 12px; height: 12px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+.b-fail { width: 14px; flex: none; font-style: normal; font-size: 12px; color: var(--bad); text-align: center; }

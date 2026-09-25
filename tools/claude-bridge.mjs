@@ -15,13 +15,15 @@ export function claudeAvailable() {
 }
 
 const SYSTEM = `Du wirst aus der Oberfläche der Component Factory aufgerufen (Eingabezeile „Bauen“ oder Bearbeiten-Modus). Der Nutzer sieht deine Arbeitsschritte live mit.
-Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk (Datei steht unten). Lies components/<id>.tweaks.js, falls vorhanden: gesperrte Flächen (locks) nie verändern, akzeptierte Ausnahmen (exceptions) nicht beheben. Lies feedback/praeferenzen.js und feedback/leitsaetze.js, falls vorhanden: Leitsätze mit status bestaetigt gelten wie Soll-Regeln, vorschlag nur als Hinweis, verworfen gar nicht. Bedienelemente, Chips und Fortschrittsbalken nur aus den Bausteinen des Regelwerks (atoms in system.js), Icons nur über h.icon.
-- Neue Komponente gewünscht: components/<id>.js mit drei Layouts anlegen und die id in components/_index.js eintragen.
-- Änderung an einer bestehenden Komponente, einem Layout oder einer Regel: nur das Nötige ändern. Änderungen aus dem Bearbeiten-Modus (Auto-Layout) sind verbindlich: Reihenfolge, feste Größen und gap als Struktur im Code umsetzen (Markup/data, width/height, gap), nie mit absoluten Positionen oder translate; danach nicht mehr im Raster liegende Flächen ausgleichen.
-- Danach immer: node tools/check.mjs <id> bis alles ✓ ist. Dann den Screenshot NEU erzeugen (node tools/shot.mjs <id> --layouts; PNGs in shots/ von vorher sind veraltet), ansehen und offensichtliche optische Fehler beheben.
+Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk. Steht unten ein Kontext, ist das der aktuelle Stand dieser Dateien – lies sie nicht noch einmal. In components/<id>.tweaks.js gesperrte Flächen (locks) nie verändern, akzeptierte Ausnahmen (exceptions) nicht beheben. Leitsätze mit status bestaetigt gelten wie Soll-Regeln. Bedienelemente, Chips und Fortschrittsbalken nur aus den Bausteinen (atoms), Icons nur über h.icon.
+- Lesen mit Read, suchen mit Grep und Glob. Shell nur für node tools/… sowie git log, git show, git diff und ls – ohne Pipes, Umleitungen oder &&, die Ausgaben sind kurz.
+- Neue Komponente: zuerst node tools/new.mjs <id> "<Name>" <layout-id>:<Name> … (legt Datei und Eintrag in _index.js an), dann ausbauen.
+- Änderungen an bestehenden Dateien mit Edit an den betroffenen Stellen, nicht die ganze Datei neu schreiben. Nur das Nötige ändern. Änderungen aus dem Bearbeiten-Modus (Auto-Layout) sind verbindlich: Reihenfolge, feste Größen und gap als Struktur im Code umsetzen (Markup/data, width/height, gap), nie mit absoluten Positionen oder translate.
+- Danach immer: node tools/verify.mjs <id> [geänderte layout-ids] – prüft (mit Zuständen, falls vorhanden) und macht einen Screenshot. Das Bild jedes Mal ansehen (Read) und optische Fehler beheben; wiederholen, bis alles ✓ ist und gut aussieht.
 - Zum Schluss höchstens zwei kurze Sätze auf Deutsch, was du gemacht hast. Letzte Zeile genau: ID: <id der betroffenen Komponente> (oder ID: - wenn keine).`;
 
-const TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(node tools/check.mjs:*)', 'Bash(node tools/shot.mjs:*)', 'Bash(node tools/export.mjs:*)'];
+const TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(node tools/verify.mjs:*)', 'Bash(node tools/new.mjs:*)', 'Bash(node tools/check.mjs:*)', 'Bash(node tools/shot.mjs:*)', 'Bash(node tools/export.mjs:*)',
+  'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)', 'Bash(ls:*)'];
 // Nur für „Nach Figma“: Figma über figma-console (Plugin „Desktop Bridge“ muss laufen)
 const FIGMA_TOOLS = ['mcp__figma-console__figma_get_status', 'mcp__figma-console__figma_navigate', 'mcp__figma-console__figma_execute'];
 
@@ -41,6 +43,8 @@ function stepFor(tool, input, root) {
     case 'Glob': return { code: `files.find("${input.pattern}")`, kind: 'find' };
     case 'Grep': return { code: `files.search("${input.pattern}")`, kind: 'find' };
     case 'Bash':
+      if ((m = bash.match(/tools\/verify\.mjs\s*([^|&;>]*)/))) return { code: `rules.verify("${m[1].trim()}")`, kind: 'check' };
+      if ((m = bash.match(/tools\/new\.mjs\s+([a-z0-9-]+)/))) return { code: `component.new("${m[1]}")`, kind: 'write', files: [`components/${m[1]}.js`, 'components/_index.js'] };
       if ((m = bash.match(/tools\/check\.mjs\s*([^|&;>]*)/))) return { code: `rules.check(${m[1].trim() ? `"${m[1].trim()}"` : ''})`, kind: 'check' };
       if ((m = bash.match(/tools\/shot\.mjs\s*([^|&;>]*)/))) return { code: `render.snapshot("${m[1].trim()}")`, kind: 'shot' };
       if ((m = bash.match(/tools\/export\.mjs\s*([^|&;>]*)/))) return { code: `handoff.export("${m[1].trim()}")`, kind: 'export' };
@@ -68,10 +72,9 @@ function detailFor(kind, text, isError) {
 // Kontextpaket: was Claude sonst zu Beginn zusammensucht, gleich mitschicken – Regelwerk (Werte, Regeln, Bausteine,
 // CSS), bestätigte Leitsätze, die letzten Entscheidungen und die Komponenten, um die es im Auftrag geht (Quelltext
 // und Feinschliff). Claude muss diese Dateien dann nicht erneut lesen.
-export function buildContext(root, system, prompt) {
+// Komponenten, um die es im Auftrag geht: per Pfad (components/<id>.js) oder per Name als eigenes Wort („Musik“)
+export function componentsIn(root, prompt) {
   const read = p => { try { return fs.readFileSync(path.join(root, p), 'utf8'); } catch { return null; } };
-  const block = (p, lang) => { const t = read(p); return t == null ? '' : `### ${p}\n\`\`\`${lang}\n${t.trim()}\n\`\`\`\n`; };
-  // Komponenten im Auftrag: per Pfad (components/<id>.js) oder per Name („Musik“)
   const ids = new Set([...prompt.matchAll(/components\/([a-z0-9-]+)\.js/g)].map(m => m[1]).filter(id => id !== '_index'));
   for (const file of fs.readdirSync(path.join(root, 'components')).filter(n => /^[a-z0-9-]+\.js$/.test(n) && n !== '_index.js' && !n.endsWith('.tweaks.js'))) {
     const src = read(`components/${file}`) || '';
@@ -79,6 +82,12 @@ export function buildContext(root, system, prompt) {
     // als eigenes Wort (Buchstaben davor oder danach zählen nicht), ab 4 Zeichen, damit kurze Namen nicht zufällig treffen
     if (name && name.length >= 4 && new RegExp(`(?<!\\p{L})${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\p{L})`, 'u').test(prompt)) ids.add(file.slice(0, -3));
   }
+  return [...ids];
+}
+export function buildContext(root, system, prompt) {
+  const read = p => { try { return fs.readFileSync(path.join(root, p), 'utf8'); } catch { return null; } };
+  const block = (p, lang) => { const t = read(p); return t == null ? '' : `### ${p}\n\`\`\`${lang}\n${t.trim()}\n\`\`\`\n`; };
+  const ids = componentsIn(root, prompt);
   let ls = '';
   try { const m = (read('feedback/leitsaetze.js') || '').match(/=\s*(\[[\s\S]*\]);?\s*$/); ls = JSON.parse(m[1]).filter(x => x.status === 'bestaetigt').map(x => `- ${x.id}: ${x.text}`).join('\n'); } catch {}
   let pref = '';
@@ -86,11 +95,12 @@ export function buildContext(root, system, prompt) {
   const list = fs.readdirSync(path.join(root, 'components')).filter(n => /^[a-z0-9-]+\.js$/.test(n) && n !== '_index.js' && !n.endsWith('.tweaks.js')).map(n => n.slice(0, -3));
   return `# Kontext (aktueller Stand – diese Dateien musst du nicht noch einmal lesen)
 Komponenten im Projekt: ${list.join(', ')}.
-${block(`systems/${system}/system.js`, 'js')}${block(`systems/${system}/system.css`, 'css')}${ls ? `### Bestätigte Leitsätze (wie Soll-Regeln)\n${ls}\n` : ''}${pref ? `### Letzte Entscheidungen zu Varianten\n${pref}\n` : ''}${[...ids].map(id => block(`components/${id}.js`, 'js') + block(`components/${id}.tweaks.js`, 'js')).join('')}`;
+${block(`systems/${system}/system.js`, 'js')}${block(`systems/${system}/system.css`, 'css')}${ls ? `### Bestätigte Leitsätze (wie Soll-Regeln)\n${ls}\n` : ''}${pref ? `### Letzte Entscheidungen zu Varianten\n${pref}\n` : ''}${ids.map(id => block(`components/${id}.js`, 'js') + block(`components/${id}.tweaks.js`, 'js')).join('')}`;
 }
 
 // onEvent({type:'step', code}) · ({type:'detail', text}) ; done → {type:'done', id, text, cost} | {type:'error', text}
 export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma = false, context = false, onEvent }) {
+  onEvent({ type: 'meta', model: model || 'standard', context });
   const sys = `${context ? `${buildContext(root, system, prompt)}\n` : ''}${SYSTEM}\nAktives Regelwerk: systems/${system}/system.js (Werte, Regeln) und systems/${system}/system.css (Tokens, Typo-Klassen). Prüfe mit node tools/check.mjs <id> --system ${system}, Screenshots mit node tools/shot.mjs <id> --layouts --system=${system}.`;
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     '--allowedTools', ...TOOLS, ...(figma ? FIGMA_TOOLS : []), '--append-system-prompt', sys];
@@ -109,6 +119,7 @@ export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma 
         if (!s) continue;
         pending.set(c.id, s);
         if (s.file) touched.push(s.file);
+        if (s.files) touched.push(...s.files);
         onEvent({ type: 'step', code: s.code });
       }
     } else if (msg.type === 'user' && Array.isArray(content)) {

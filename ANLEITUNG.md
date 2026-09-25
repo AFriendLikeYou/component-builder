@@ -1,6 +1,6 @@
 # Anleitung: Regeln und Bausteine ergänzen
 
-Vor jedem Auftrag liest Claude vier Quellen: `CLAUDE.md`, das aktive Regelwerk (`systems/<id>/system.js` und `system.css`), `feedback/praeferenzen.js` und `feedback/leitsaetze.js`. Was dort steht, wirkt sofort auf neue Layouts. Das meiste lässt sich in der Fabrik unter **Regeln** ändern; die Dateien musst du nur anfassen, wenn du willst.
+Vor jedem Auftrag bekommt Claude `CLAUDE.md`, das Regelwerk (`systems/fabrik/system.js` und `system.css`), `feedback/praeferenzen.js`, `feedback/leitsaetze.js` und die betroffenen Komponenten mit. Seltener Gebrauchtes (Übergabe, Figma, neue Messungen) steht in `docs/claude-referenz.md`, das Claude nur bei Bedarf liest. Was dort steht, wirkt sofort auf neue Layouts. Das meiste lässt sich in der Fabrik unter **Regeln** ändern; die Dateien musst du nur anfassen, wenn du willst.
 
 ## Wo liegt was
 
@@ -13,7 +13,7 @@ Vor jedem Auftrag liest Claude vier Quellen: `CLAUDE.md`, das aktive Regelwerk (
 | `feedback/leitsaetze.js` | Leitsätze aus euren Rückmeldungen | Claude leitet ab, ihr bestätigt |
 | `components/<id>.js` | die Komponenten selbst | Claude |
 
-Es gibt zwei Regelwerke, `fabrik` und `zds`. Jedes hat eigene Regeln und eigene Bausteine. Soll etwas in beiden gelten, legst du es in beiden an (oben rechts umschalten).
+Das Regelwerk ist `systems/fabrik/`. Weitere Regelwerke sind möglich (eigener Ordner unter `systems/`, Eintrag in `systems/_systems.js`); dann hat jedes eigene Regeln und Bausteine.
 
 ## 1. Neue Regeln für Layouts
 
@@ -34,7 +34,7 @@ Es gibt zwei Regelwerke, `fabrik` und `zds`. Jedes hat eigene Regeln und eigene 
 },
 ```
 
-- `id`: fortlaufend, `R…` in der Fabrik, `Z…` im ZDS.
+- `id`: fortlaufend, `R1`, `R2` …
 - `title`, `text`: was gilt. `{inset}`, `{unit}`, `{limits.sizes}` usw. setzen die aktuellen Werte ein, `` `code` `` wird als Code gezeigt.
 - `checks`: Kürzel der Messungen. Leer heißt: Gestaltungsregel, die Claude befolgt, die aber niemand misst.
 - `level: 'soll'`: nur Hinweis; weglassen heißt Muss.
@@ -70,16 +70,16 @@ Nicht in `rules` gehört die Arbeitsweise (drei Layouts, Familien, Zustände). D
 
 ## 2. Neue Elemente und Bausteine
 
-Ein Baustein besteht je Regelwerk aus zwei Teilen: dem Eintrag unter `atoms` in `system.js` (Name, Varianten, Beispiel) und dem Aussehen in `system.css`. Die Klasse und die Namen der Varianten sind der gemeinsame Vertrag. Wie ein Baustein aussieht, legt jedes Regelwerk selbst fest, das ZDS darf also andere Radien, Höhen oder zusätzliche Varianten haben.
+Ein Baustein besteht aus zwei Teilen: dem Eintrag unter `atoms` in `system.js` (Name, Varianten, Beispiel) und dem Aussehen in `system.css`. Die Klasse und die Namen der Varianten sind der Vertrag mit den Komponenten; das Aussehen darfst du jederzeit ändern, die Komponenten ziehen mit.
 
 ### In der Oberfläche (Regeln → Bausteine)
 
-- **Neuer Baustein**: beschreiben, wofür er ist und welche Varianten er braucht. **Nur ZEIT Design System** oder **Alle Regelwerke** wählen. Claude legt Eintrag und CSS an. Gilt er nur fürs ZDS, bekommt die Fabrik eine schlichte Fassung derselben Klasse, damit die Komponenten überall funktionieren.
+- **Neuer Baustein**: beschreiben, wofür er ist und welche Varianten er braucht. Claude legt Eintrag und CSS an.
 - **Ändern** am Baustein: beschreiben, was anders sein soll.
 - **Als Baustein aufnehmen** bei einem Eigenbau: Die Form aus einer Komponente steht danach allen Komponenten zur Verfügung.
 - **Auf Baustein umstellen** oder **Alle auf Bausteine umstellen lassen**: Eigenbauten in den Komponenten ersetzen.
 
-**Beispiel aus dem Verlauf** (Commit `d90fd13`): Auftrag „Knopf mit Text im ZDS eckig mit 4 px Radius“, nur ZEIT Design System. Claude hat in `systems/zds/system.css` den Radius von `.btn-pill` auf `var(--z-ds-border-radius-4)` gesetzt und im Eintrag unter `atoms` die Beschreibung ergänzt. Die Fabrik blieb unverändert.
+**Beispiel:** „Ändern“ am Knopf mit Text, Auftrag „eckig mit 4 px Radius statt Pille“. Claude ändert den Radius von `.btn-pill` in `system.css` und ergänzt die Beschreibung unter `atoms`; alle Komponenten mit diesem Knopf ziehen mit.
 
 ### Aufbau eines Eintrags
 
@@ -122,12 +122,13 @@ Karten statt Bausteine entstehen über **Bauen**: „Baue eine Komponente Wetter
 2. In Figma zuerst `CF.buildAtoms(bausteine, { icons })`: Die Section „Bausteine · <Regelwerk>“ bekommt ein Component Set je Baustein. Beim erneuten Ausführen werden die Komponenten neu gefüllt, Instanzen in den Karten bleiben verbunden.
 3. Danach je Komponente `CF.build(daten, { icons })`: Bausteine werden in den Karten Instanzen mit Overrides für Text, Icon, Fläche und Schatten.
 
-Im ZDS kommen die Icons aus der Library ZDS-Icons, fehlende aus dem eigenen Icon-Satz. Offen ist noch, ZDS-Bausteine auf die echten Komponenten der ZDS-Library abzubilden (Icon Button, Play Button, Text Button, Checkbox).
+Mit einer Icon-Library in Figma (`icons` = Komponenten-Keys je Name) kommen gleiche Icons von dort, fehlende aus dem eigenen Icon-Satz.
 
 ## Prüfen
 
 ```sh
-node tools/check.mjs --system fabrik     # alle Komponenten, Fabrik
-node tools/check.mjs --system zds        # alle Komponenten, ZDS
-node tools/check.mjs <id> --states --widths --stress --system <id>
+node tools/verify.mjs <id> [layout …]    # eine Komponente prüfen und Screenshot (shots/<id>-pruefung.jpg)
+node tools/check.mjs                      # alle Komponenten
+node tools/check.mjs <id> --states --widths --stress
+node tools/new.mjs <id> "<Name>" a:Eins b:Zwei c:Drei   # Gerüst für eine neue Komponente
 ```

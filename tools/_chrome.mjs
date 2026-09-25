@@ -89,7 +89,8 @@ export async function withPage(url, fn, { width = 1600, height = 1000, scale = 1
       return false;
     };
     page.resize = (w, h) => page.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: scale, mobile: false });
-    page.shot = async () => Buffer.from((await page.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
+    // shot({ jpeg: 60 }) = JPEG mit Qualität 60 statt PNG; clip = Ausschnitt { x, y, width, height } in CSS-Pixeln
+    page.shot = async ({ jpeg = 0, clip = null } = {}) => Buffer.from((await page.send('Page.captureScreenshot', { format: jpeg ? 'jpeg' : 'png', ...(jpeg ? { quality: jpeg } : {}), ...(clip ? { clip: { ...clip, scale: 1 }, captureBeyondViewport: true } : {}) })).data, 'base64');
     await page.send('Page.navigate', { url });
     return await fn(page);
   } finally {

@@ -7,6 +7,7 @@
 //   node tools/shot.mjs music --build         Bauen-Ansicht, Endzustand
 //   node tools/shot.mjs music --layouts --state=loading   alle Layouts in einem Zustand (hover, loading, empty, error)
 //   Optionen: --width=2000 --height=900 --scale=2 --web (Web-Bilder statt Platzhalter) --system=<id>
+//             --jpeg[=60] kleineres Bild als JPEG (für Claude reicht das zum Ansehen)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { withPage, pageURL, ROOT } from './_chrome.mjs';
@@ -29,7 +30,9 @@ const scale = +(opt('scale') || 1);
 mkdirSync(path.join(ROOT, 'shots'), { recursive: true });
 const st = view === 'layouts' ? opt('state') : null;
 const name = [id || 'alle', layout, view, st, opt('system')].filter(Boolean).join('-');
-const out = path.join(ROOT, 'shots', `${name}.png`);
+const jpegArg = args.find(a => a === '--jpeg' || a.startsWith('--jpeg='));
+const jpeg = jpegArg ? +(jpegArg.split('=')[1] || 60) : 0;
+const out = path.join(ROOT, 'shots', `${name}.${jpeg ? 'jpg' : 'png'}`);
 
 const errors = await withPage(pageURL(p.toString().replace(/=(&|$)/g, '$1')), async page => {
   const ok = await page.waitFor("document.documentElement.dataset.ready === '1'", 30000);
@@ -46,7 +49,7 @@ const errors = await withPage(pageURL(p.toString().replace(/=(&|$)/g, '$1')), as
   const h = fixedH || (view === 'canvas' || view === 'build' ? 1000 : Math.min(6000, await page.eval('document.documentElement.scrollHeight')));
   await page.resize(width, h);
   await new Promise(r => setTimeout(r, 300));
-  writeFileSync(out, await page.shot());
+  writeFileSync(out, await page.shot({ jpeg }));
   return page.errors;
 }, { width, height: fixedH || 1000, scale });
 
