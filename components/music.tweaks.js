@@ -23,6 +23,11 @@ Factory.tweaks("music", {
         "cssO": {
           "order": "3"
         }
+      },
+      "text:liste": {
+        "cssL": {
+          "gap": "64px"
+        }
       }
     }
   }
