@@ -21,6 +21,10 @@ Das startet die Seite mit Live-Reload und verbindet die Eingabezeile mit deinem 
 - **Fabrik**: alle Layouts auf einer Fläche, mit Kamerafahrt. Ziehen verschiebt, ⌘ + Scrollen zoomt.
 - **Regeln**: alle Gestaltungsregeln mit Beispielen und wie viele Layouts sie erfüllen, dazu Schriftskala, Textstile, Farben, Abstände, Radien. **Regeln anpassen** macht Werte und Texte editierbar: Jede Änderung misst sofort alle Layouts neu und zeigt, was brechen würde. **Übernehmen** speichert in `factory/system.js`, **Verwerfen** stellt den alten Stand her. Für neue, noch nicht gemessene Regeln baut Claude auf Knopfdruck eine Prüfung; Verstöße lässt du von Claude beheben.
 
+## Verlauf
+
+Jede Änderung wird automatisch gespeichert, egal ob sie von dir, vom Feinschliff oder von Claude kommt. Der Ordner ist dafür ein Git-Repository. Oben rechts unter **Verlauf** siehst du alle Änderungen. **Rückgängig** oder ⌘Z nimmt die letzte zurück, **Hierhin zurück** stellt einen früheren Stand komplett wieder her. Auch das Zurücknehmen lässt sich wieder zurücknehmen.
+
 ## Eigene Bilder
 
 Bilder oder Videos ins Fenster ziehen. Sie füllen sofort alle Medienflächen, bis die Seite neu geladen wird. Dauerhaft geht es so: Dateien in `media/` legen und oben rechts „Bilder: Ordner“ wählen (mit dem Server automatisch, sonst vorher `node tools/media.mjs`).

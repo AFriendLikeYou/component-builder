@@ -10,6 +10,7 @@ import { ROOT } from './_chrome.mjs';
 import { listMedia } from './media.mjs';
 import { createClaudeJob, claudeAvailable } from './claude-bridge.mjs';
 import { renderSystemJS, validSystem } from './system-file.mjs';
+import { createHistory } from './history.mjs';
 
 const PORT = +process.env.PORT || 4173;
 const TYPES = {
@@ -21,6 +22,7 @@ const TYPES = {
 const RELOAD = `<script>new EventSource('/__reload').onmessage = () => { if (!window.__cfHold) location.reload(); };</script>`;
 const clients = new Set();
 let job = null, pendingPing = false;
+const history = createHistory(ROOT, { busy: () => !!job });
 const muted = new Map(); // Dateien, die die Seite selbst schreibt: kein Neuladen auslösen
 const readBody = req => new Promise(res => { let b = ''; req.on('data', d => { b += d; if (b.length > 500000) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b)); } catch { res(null); } }); });
 const sendJSON = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
@@ -64,7 +66,22 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/status') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job }));
+    return res.end(JSON.stringify({ claude: claudeAvailable(), busy: !!job, history: history.enabled }));
+  }
+  if (url.pathname === '/api/history') {
+    try { history.commitNow(); } catch {}
+    return sendJSON(res, 200, { ok: history.enabled, items: history.list(40) });
+  }
+  if (url.pathname === '/api/undo' && req.method === 'POST') {
+    if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – danach geht Rückgängig wieder.' });
+    const r = history.undo();
+    if (r.ok) console.log(`↶ Rückgängig: ${r.subject}`);
+    return sendJSON(res, 200, r);
+  }
+  if (url.pathname === '/api/restore' && req.method === 'POST') {
+    if (job) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade.' });
+    readBody(req).then(b => { const r = history.restore(b?.sha); if (r.ok) console.log(`↺ ${r.subject}`); sendJSON(res, 200, r); });
+    return;
   }
   if (url.pathname === '/api/cancel' && req.method === 'POST') {
     job?.cancel();
@@ -84,6 +101,7 @@ const server = http.createServer((req, res) => {
       job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
+        try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true }); } catch (e) { console.error('Verlauf:', e.message); }
         send(ev); res.end(); job = null;
         if (pendingPing) { pendingPing = false; setTimeout(ping, 400); }
       });
@@ -94,6 +112,7 @@ const server = http.createServer((req, res) => {
     readBody(req).then(b => {
       if (!b || !validId(b.id) || typeof b.tweaks !== 'object') return sendJSON(res, 400, { ok: false });
       writeTweaks(b.id, b.tweaks);
+      history.schedule(`Feinschliff: ${b.id}`);
       sendJSON(res, 200, { ok: true });
     });
     return;
@@ -103,6 +122,7 @@ const server = http.createServer((req, res) => {
       if (!validSystem(b?.system)) return sendJSON(res, 400, { ok: false, error: 'Ungültiges Regelwerk' });
       fs.writeFileSync(path.join(ROOT, 'factory', 'system.js'), renderSystemJS(b.system));
       console.log(`§ Regeln übernommen (System v${b.system.version})`);
+      history.commitNow(`Regeln: ${String(b.message || 'angepasst').slice(0, 100)} (System v${b.system.version})`);
       sendJSON(res, 200, { ok: true });
     });
     return;
@@ -111,7 +131,7 @@ const server = http.createServer((req, res) => {
     readBody(req).then(b => {
       if (!b || !validId(b.id)) return sendJSON(res, 400, { ok: false });
       const r = patchText(b.id, String(b.from || ''), String(b.to || ''));
-      if (r.ok) console.log(`✎ Text in components/${b.id}.js: „${b.from}“ → „${b.to}“`);
+      if (r.ok) { console.log(`✎ Text in components/${b.id}.js: „${b.from}“ → „${b.to}“`); history.commitNow(`Text: ${b.id} „${b.from}“ → „${b.to}“`); }
       sendJSON(res, 200, r);
     });
     return;
@@ -157,6 +177,6 @@ server.listen(PORT, '127.0.0.1', () => console.log(`Component Factory: http://lo
 
 let timer;
 // Während Claude arbeitet, nicht neu laden – erst wenn die Anfrage fertig ist.
-const ping = () => { if (job) { pendingPing = true; return; } clearTimeout(timer); timer = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150); };
-for (const dir of ['components', 'factory', 'media']) fs.watch(path.join(ROOT, dir), (_, name) => { if (!name || name.startsWith('.') || (muted.get(name) || 0) > Date.now()) return; ping(); });
+const ping = () => { history.schedule(null, 3000); if (job) { pendingPing = true; return; } clearTimeout(timer); timer = setTimeout(() => clients.forEach(c => c.write('data: reload\n\n')), 150); };
+for (const dir of ['components', 'factory', 'media']) fs.watch(path.join(ROOT, dir), (_, name) => { if (!name || name.startsWith('.')) return; if ((muted.get(name) || 0) > Date.now()) return; ping(); });
 fs.watch(ROOT, (_, name) => { if (name === 'index.html') ping(); });

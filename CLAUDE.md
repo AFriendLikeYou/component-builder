@@ -77,5 +77,6 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 
 - Vorschau: `open index.html` oder `node tools/serve.mjs` (http://localhost:4173, lädt bei jeder Änderung neu, verbindet die Eingabezeile mit Claude Code).
 - Als Artifact veröffentlichen: `node tools/artifact.mjs` bereitet `dist/` vor und gibt die Dateiliste aus.
+- Verlauf: Der Ordner ist ein Git-Repository. `tools/serve.mjs` committet jede Änderung selbst (auch deine) und bietet in der Fabrik „Rückgängig“ und „Hierhin zurück“. Committe und pushe nicht selbst.
 - `factory/` nur ändern, wenn es um Regeln oder die Fabrik selbst geht. Stile der Fabrik nie so schreiben, dass sie in Karten greifen (Kindselektoren `>` statt Nachfahren).
 - `python3` ist hier ein Xcode-Stub: Skripte in Node schreiben.

@@ -589,6 +589,93 @@ function cycleMedia() {
   route(true);
 }
 
+/* ---------- Verlauf (Git) ---------- */
+const KIND_NAME = { claude: 'Claude', tweak: 'Feinschliff', text: 'Text', rules: 'Regeln', undo: 'Rückgängig', restore: 'Zurück', extern: 'Datei', start: 'Start' };
+function relTime(iso) {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 45) return 'gerade eben';
+  if (s < 3600) return `vor ${Math.round(s / 60)} Min.`;
+  if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
+  return new Date(iso).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function toast(text, bad) {
+  document.querySelector('.cf-toast')?.remove();
+  const t = document.createElement('div');
+  t.className = `cf-toast${bad ? ' is-bad' : ''}`;
+  t.setAttribute('role', 'status');
+  t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+function keepForReload(text) {
+  try { sessionStorage.setItem('cf.toast', text); } catch {}
+  const fig = main.querySelector('.cf-lay-item.is-editing');
+  if (fig?._ed) setReopen(fig._ed);
+}
+async function doUndo() {
+  try {
+    const j = await (await fetch('/api/undo', { method: 'POST' })).json();
+    if (!j.ok) return toast(j.error || 'Rückgängig ging nicht.', true);
+    keepForReload(`Rückgängig: ${j.subject}`);
+    toast(`Rückgängig: ${j.subject}`);
+    if (!document.getElementById('cf-hist-pop')?.hidden) renderHistory();
+  } catch { toast('Der Server antwortet nicht.', true); }
+}
+async function renderHistory() {
+  const pop = document.getElementById('cf-hist-pop');
+  let items = [];
+  try { items = (await (await fetch('/api/history', { cache: 'no-store' })).json()).items || []; } catch {}
+  const canUndo = items.some(i => !i.undone && i.kind !== 'undo' && i.kind !== 'start');
+  pop.innerHTML = `<div class="hi-head"><b>Verlauf</b><button type="button" class="cf-btn is-primary" data-a="undo"${canUndo ? '' : ' disabled'}>↶ Rückgängig</button></div>
+    <p class="hi-note">Jede Änderung ist gespeichert, von dir, vom Feinschliff und von Claude. ⌘Z nimmt die letzte zurück, „Hierhin zurück“ stellt einen ganzen Stand wieder her.</p>
+    <ol class="hi-list">${items.map((i, n) => `<li class="${i.undone ? 'is-undone' : ''}">
+      <span class="hi-kind k-${i.kind}">${KIND_NAME[i.kind] || i.kind}</span>
+      <div class="hi-body"><p class="hi-sub">${esc(i.subject.replace(/^(Claude|Feinschliff|Text|Regeln|Rückgängig|Wiederhergestellt): /, ''))}</p>
+        <p class="hi-meta">${relTime(i.when)} · ${esc(i.files.slice(0, 2).map(f => f.split('/').pop()).join(', '))}${i.files.length > 2 ? ` +${i.files.length - 2}` : ''}${i.undone ? ' · zurückgenommen' : ''}</p></div>
+      ${n ? `<button type="button" class="ed-mini" data-restore="${i.sha}" title="Stand nach dieser Änderung wiederherstellen">Hierhin zurück</button>` : '<span class="hi-now">aktuell</span>'}
+    </li>`).join('')}</ol>`;
+  pop.querySelector('[data-a="undo"]').addEventListener('click', doUndo);
+  pop.querySelectorAll('[data-restore]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const j = await (await fetch('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sha: b.dataset.restore }) })).json();
+      if (!j.ok) { b.disabled = false; return toast(j.error || 'Wiederherstellen ging nicht.', true); }
+      keepForReload(j.subject);
+      toast(j.subject);
+      renderHistory();
+    } catch { toast('Der Server antwortet nicht.', true); }
+  }));
+}
+function initHistory() {
+  const btn = document.getElementById('cf-hist');
+  if (!btn || !F.live?.history) return;
+  btn.hidden = false;
+  btn.innerHTML = `${icon('clock', 16)}<span>Verlauf</span>`;
+  const pop = document.createElement('div');
+  pop.id = 'cf-hist-pop';
+  pop.className = 'cf-pop';
+  pop.hidden = true;
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Verlauf');
+  document.body.appendChild(pop);
+  const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!pop.hidden) return close();
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    pop.innerHTML = '<p class="hi-note">Lädt …</p>';
+    renderHistory();
+  });
+  document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target) && e.target !== btn) close(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !pop.hidden) return close();
+    const t = e.target;
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !t.isContentEditable && !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) { e.preventDefault(); doUndo(); }
+  });
+  try { const t = sessionStorage.getItem('cf.toast'); if (t) { sessionStorage.removeItem('cf.toast'); toast(t); } } catch {}
+}
+
 function initChrome() {
   document.querySelectorAll('.cf-tabs button').forEach(b => b.addEventListener('click', () => {
     state.view = b.dataset.view; state.solo = false; route();
@@ -600,6 +687,7 @@ function initChrome() {
   }
   renderMediaBtn();
   renderSummary();
+  initHistory();
   if (mediaSource === 'web') probeWeb();
 
   const drop = document.getElementById('cf-drop');
@@ -800,7 +888,7 @@ function bindDraft() {
     btn.textContent = 'Speichert …';
     const system = { ...S, version: /^\d+$/.test(S.version) ? String(+S.version + 1) : S.version };
     try {
-      const r = await fetch('/api/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system }) });
+      const r = await fetch('/api/system', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ system, message: systemDiff().map(k => DIFF_NAMES[k] || k).join(', ') }) });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Fehler ${r.status}`);
       btn.textContent = 'Übernommen – lädt neu …';
     } catch (err) {
@@ -867,9 +955,9 @@ function viewRules(keepScroll) {
   const tokens = colorTokens();
   main.innerHTML = `<div class="v-rules${rulesEdit ? ' is-editing' : ''}">
   <header class="rs-head">
-    <div class="rs-headrow"><p class="cf-mono">${esc(S.name)} · System v${esc(S.version)}${draft ? ' · Entwurf' : ''}</p>
+    <div class="rs-headrow">
+      <h1 class="rs-h1">Regeln für alle Komponenten</h1>
       <button type="button" class="cf-btn${rulesEdit ? ' is-primary' : ''}" data-a="rules-edit">${rulesEdit ? `${icon('check', 14)}Fertig` : `${icon('edit', 14)}Regeln anpassen`}</button></div>
-    <h1 class="rs-h1">Regeln für alle Komponenten</h1>
     <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Quelle ist <code>factory/system.js</code>, dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
     <dl class="rs-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
     ${all.length ? `<div class="rs-sum">${okAll === all.length ? `<span class="cf-badge ok">${icon('check', 14)}Alle ${all.length} Layouts erfüllen die gemessenen Regeln</span>` : `<span class="cf-badge bad">${okAll} von ${all.length} Layouts erfüllen die gemessenen Regeln</span>${F.live && !draft ? '<button type="button" class="cf-btn" data-a="fix-all">Verstöße von Claude beheben lassen</button>' : ''}`}<div class="b-log ed-log rs-fixlog"></div></div>` : ''}
