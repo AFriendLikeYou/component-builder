@@ -108,7 +108,17 @@ globalThis.CF = (() => {
       }
       el.textAlignHorizontal = { center: 'CENTER', right: 'RIGHT', end: 'RIGHT', justify: 'JUSTIFIED' }[n.align] || 'LEFT';
       el.resize(Math.max(1, n.w), Math.max(1, n.h));
-      if (n.truncate || n.clamp) { el.textTruncation = 'ENDING'; el.maxLines = n.clamp || 1; el.textAutoResize = 'NONE'; el.resize(Math.max(1, n.w), Math.max(1, n.h)); }
+      if (n.truncate || n.clamp) {
+        // Reihenfolge zählt: textAutoResize = 'NONE' nach der Kürzung schaltet sie wieder aus.
+        // Figma setzt etwas breiter als der Browser; passt der Text knapp nicht, bekommt er die paar px dazu statt „Mira L…“.
+        el.textAutoResize = 'WIDTH_AND_HEIGHT';
+        const natural = el.width;
+        el.textAutoResize = 'NONE';
+        const w = !n.clamp && natural > n.w && natural <= n.w * 1.1 + 2 ? Math.ceil(natural) : n.w;
+        el.resize(Math.max(1, w), Math.max(1, n.h));
+        el.textTruncation = 'ENDING';
+        if (n.clamp > 1) el.maxLines = n.clamp;
+      }
       else {
         // Einzeilige Texte wachsen mit dem Inhalt: Figma misst etwas breiter als der Browser und bräche sonst um.
         const lh = Math.max(...n.runs.map(r => r.style.lh || r.style.size * 1.2));
@@ -144,7 +154,6 @@ globalThis.CF = (() => {
         catch (e) { el = figma.createFrame(); el.fills = []; log.push(`SVG nicht lesbar (${n.name})`); }
         if (Math.abs(el.width - n.w) > .5 || Math.abs(el.height - n.h) > .5) el.resize(Math.max(1, n.w), Math.max(1, n.h));
       }
-      if (n.icon) el.name = `Icon/${n.icon}`;
     } else if (n.type === 'media') {
       el = figma.createRectangle();
       el.resize(Math.max(1, n.w), Math.max(1, n.h));
@@ -196,7 +205,7 @@ globalThis.CF = (() => {
         }
       }
     }
-    el.name = n.name || el.name;
+    el.name = n.icon ? `Icon/${n.icon}` : n.name || el.name;
     if (n.opacity != null && n.opacity < 1) el.opacity = n.opacity;
     return el;
   }
