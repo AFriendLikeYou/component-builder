@@ -72,13 +72,45 @@
 .cf-media { position: relative; overflow: hidden; background-color: var(--c-fill); }
 .cf-media > img, .cf-media > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* Bedienelemente */
+/* Bausteine: Bedienelemente und kleine Teile. Liste mit Varianten in system.js unter atoms,
+   Übersicht in der Ansicht „Regeln“ → Bausteine. Farbe darf eine Komponente anpassen, Form und Größe nicht. */
 .btn-round { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: var(--c-fill); }
 .btn-round.sm { width: 32px; height: 32px; }
+.btn-round.lg { width: 48px; height: 48px; }
+.btn-round.xl { width: 64px; height: 64px; }
 .btn-round.solid { background: var(--c-ink); color: #fff; }
 .is-dark .btn-round { background: var(--c-dark-2); }
+.btn-round.ghost { background: none; }
+.btn-round.float { background: var(--c-surface); color: var(--c-ink); box-shadow: 0 8px 24px -8px rgba(0, 0, 0, .4); }
+
 .btn-pill { height: 32px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; background: var(--c-fill); }
+.btn-pill.lg { height: 40px; }
+.is-dark .btn-pill { background: var(--c-dark-2); }
+.btn-pill.solid { background: var(--c-ink); color: var(--c-surface); }
+
+.btn-text { height: 32px; display: inline-flex; align-items: center; gap: 8px; color: var(--c-accent); }
+
+.toggle { height: 32px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--c-fill); color: var(--c-ink-2); }
+.toggle.lg { height: 40px; }
+.toggle.is-on { background: var(--c-accent-soft); color: var(--c-accent); }
+
+.check { height: 32px; display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; }
+.check-box { width: 20px; height: 20px; border-radius: 50%; flex: none; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--c-ink-3); background: var(--c-surface); }
+.check:not(.is-done) .check-box > .icon { display: none; }
+.check.is-done .check-box { background: var(--c-ink); box-shadow: none; color: var(--c-surface); }
+.check.is-done .check-label { color: var(--c-ink-2); text-decoration: line-through; text-decoration-color: var(--c-ink-3); }
+
 .chip { height: 24px; padding: 0 8px; border-radius: 999px; display: inline-flex; align-items: center; background: var(--c-fill); }
+.chip.accent { background: var(--c-accent-soft); color: var(--c-accent); }
+.chip.mark { background: var(--c-highlight); color: var(--c-ink); }
+
+.progress { height: 4px; border-radius: 999px; background: var(--c-fill-2); overflow: hidden; }
+.progress > i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); border-radius: inherit; background: var(--c-ink); }
+.progress.accent > i { background: var(--c-accent); }
+.is-dark .progress { background: var(--c-dark-2); }
+.is-dark .progress > i { background: var(--c-on-dark); }
+.progress.on-media { background: color-mix(in srgb, var(--c-surface) 48%, transparent); }
+.progress.on-media > i { background: var(--c-surface); }
 .icon { display: block; flex: none; }
 
 /* Laufende Zeiger: statischen Winkel per SVG-transform setzen, darin .cf-spin für die Bewegung */

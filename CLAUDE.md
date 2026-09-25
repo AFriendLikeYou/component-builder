@@ -51,9 +51,19 @@ Helfer `h` in `render(d, h)`:
 - `h.esc(text)`, `h.pad2(n)`, `h.now` (Date), `h.S` (Systemwerte)
 - `h.zoned('Europe/Berlin')` → `{ h, m, s, time, date, weekday, day, month, year, night }`
 
-Bausteine aus `systems/<id>/system.css`: `.t-12 … .t-64`, `.tight`, `.w-400 .w-500 .w-600`, `.serif`, `.ink-2 .ink-3`, `.num`, `.clip`, `.stack .row .between .grow`, `.g-8 .g-16 .g-24 .g-32`, `.btn-round` (`.sm`, `.solid`), `.btn-pill`, `.chip`. Tokens: `--c-ink --c-ink-2 --c-ink-3 --c-line --c-fill --c-fill-2 --c-surface --c-accent --c-accent-soft --c-warm --c-warm-soft --c-highlight --c-dark --c-dark-2 --c-on-dark --c-on-dark-2`, Radien `--r-8 --r-16 --r-pill`.
+Bausteine aus `systems/<id>/system.css`: `.t-12 … .t-64`, `.tight`, `.w-400 .w-500 .w-600`, `.serif`, `.ink-2 .ink-3`, `.num`, `.clip`, `.stack .row .between .grow`, `.g-8 .g-16 .g-24 .g-32` und die Bausteine (siehe unten). Tokens: `--c-ink --c-ink-2 --c-ink-3 --c-line --c-fill --c-fill-2 --c-surface --c-accent --c-accent-soft --c-warm --c-warm-soft --c-highlight --c-dark --c-dark-2 --c-on-dark --c-on-dark-2`, Radien `--r-8 --r-16 --r-pill`.
 
 Nur `h.media` für Bilder, keine externen Bilder, Fonts oder Skripte. `data-role="Wert"` an einem Textelement benennt es in Struktur- und Schriftenschicht um.
+
+## Bausteine
+
+Bedienelemente, Chips und Fortschrittsbalken kommen **nur aus den Bausteinen** des Regelwerks: Liste unter `atoms` in `systems/<id>/system.js` (Name, Varianten, Beispiel), CSS in `system.css`. Dieselben Klassen gibt es in allen Regelwerken, jedes gestaltet sie selbst.
+
+- `.btn-round` (`.sm` 32, Standard 40, `.lg` 48, `.xl` 64, `.solid`, `.ghost`, `.float` auf Bild) · `.btn-pill` (`.lg` 40, `.solid`) · `.btn-text`
+- `.toggle` (`.is-on`, `.lg`) mit `aria-pressed` · `.check` mit `role="checkbox"`, darin `.check-box` (mit `h.icon('check', 14)`, sichtbar nur mit `.is-done`) und `.check-label`
+- `.chip` (`.accent`, `.mark`) · `.progress` mit `<i>` darin und `style="--p: .38"` (`.accent`, `.on-media`)
+
+Farbe und Abstand darf eine Komponente anpassen (eigene Klasse zusätzlich, nur Tokens), Form und Höhe nicht. Die Regel „Bausteine statt Eigenbau“ (R12 / Z13, Soll) misst Bedienelemente ohne Baustein, Balken ohne `.progress`, Bausteine in einer Höhe ohne passende Variante und Icons außerhalb von `h.icon`. Fehlt etwas: Baustein oder Variante in **allen** Regelwerken ergänzen (`atoms` und CSS), nicht in der Komponente nachbauen.
 
 ## Wenn etwas auffällt: eine Regel daraus machen
 
@@ -89,7 +99,9 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 
 ## Varianten und Präferenzen
 
-Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert. `idea` erklärt in zwei Sätzen, was sich ändert und warum. `feedback/praeferenzen.js` sammelt, welche Varianten das Team behalten oder verworfen hat, mit Kommentar – lies die Datei vor jeder neuen Variante und richte dich danach.
+Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert. `idea` erklärt in zwei Sätzen, was sich ändert und warum. `feedback/praeferenzen.js` sammelt, welche Varianten das Team behalten oder verworfen hat, mit Kommentar, Name und `idea` der Variante – lies die Datei vor jeder neuen Variante und richte dich danach.
+
+**Leitsätze** (`feedback/leitsaetze.js`) sind das, was aus diesen Rückmeldungen, akzeptierten Ausnahmen und Feinschliff abgeleitet ist. Lies sie vor jeder Arbeit: `bestaetigt` gilt wie eine Soll-Regel (auch gegen die Beschreibung einer Variantenrichtung), `vorschlag` nur als Hinweis, `verworfen` gar nicht, `regel` steht schon im Regelwerk. Neue Leitsätze leitest du nur auf Auftrag ab („Leitsätze neu ableiten“ in „Regeln“ → Gelernt), den Status änderst du nie selbst – das tut das Team.
 
 ## Übergabe (Code und Figma)
 

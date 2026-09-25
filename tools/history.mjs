@@ -7,7 +7,7 @@ import path from 'node:path';
 const CLAUDE_TRAILER = 'Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>';
 const KINDS = [
   ['Claude: ', 'claude'], ['Feinschliff: ', 'tweak'], ['Text: ', 'text'], ['Regeln: ', 'rules'],
-  ['Rückgängig: ', 'undo'], ['Wiederhergestellt: ', 'restore'], ['Ausgangsstand', 'start'],
+  ['Gelernt: ', 'learn'], ['Präferenz: ', 'learn'], ['Rückgängig: ', 'undo'], ['Wiederhergestellt: ', 'restore'], ['Ausgangsstand', 'start'],
 ];
 
 export function createHistory(root, { busy = () => false } = {}) {

@@ -25,6 +25,7 @@ const files = {
   'systems/_systems.js': 'systems/_systems.js',
   ...Object.fromEntries(readdirSync(path.join(ROOT, 'systems'), { withFileTypes: true }).filter(d => d.isDirectory()).flatMap(d => ['system.js', 'system.css', 'fonts.css']
     .filter(f => existsSync(path.join(ROOT, 'systems', d.name, f))).map(f => [`systems/${d.name}/${f}`, `systems/${d.name}/${f}`]))),
+  ...Object.fromEntries(['feedback/praeferenzen.js', 'feedback/leitsaetze.js'].filter(f => existsSync(path.join(ROOT, f))).map(f => [f, f])),
   'factory/factory.css': 'factory/factory.css',
   'factory/factory.js': 'factory/factory.js',
   'components/_index.js': 'dist/_index.js',

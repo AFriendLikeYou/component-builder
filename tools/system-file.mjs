@@ -8,7 +8,7 @@ const key = k => (/^[a-z_$][\w$]*$/i.test(k) ? k : q(k));
 const inline = o => `{ ${Object.entries(o).map(([k, v]) => `${key(k)}: ${val(v)}`).join(', ')} }`;
 
 const KNOWN = ['name', 'id', 'version', 'unit', 'gridView', 'inset', 'radius', 'width', 'innerRadii', 'spacing', 'minTarget', 'families', 'headline',
-  'typeScale', 'lineHeightStep', 'widths', 'lineHeightRatios', 'limits', 'areaRoles', 'tokenPrefixes', 'accentFamilies', 'textStyles', 'rules'];
+  'typeScale', 'lineHeightStep', 'widths', 'lineHeightRatios', 'limits', 'areaRoles', 'tokenPrefixes', 'accentFamilies', 'textStyles', 'atoms', 'rules'];
 
 export function validSystem(S) {
   const num = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 512;
@@ -18,6 +18,7 @@ export function validSystem(S) {
     && ((num(S.lineHeightStep) && S.lineHeightStep > 0) || (Array.isArray(S.lineHeightRatios) && S.lineHeightRatios.length))
     && S.limits && ['families', 'sizes', 'weights'].every(k => num(S.limits[k]))
     && S.families && typeof S.families === 'object' && Array.isArray(S.areaRoles) && Array.isArray(S.textStyles)
+    && (S.atoms == null || (Array.isArray(S.atoms) && S.atoms.every(a => a && typeof a.id === 'string' && typeof a.name === 'string' && typeof a.match === 'string')))
     && Array.isArray(S.rules) && S.rules.every(r => r && typeof r.id === 'string' && typeof r.title === 'string' && typeof r.text === 'string' && Array.isArray(r.checks));
 }
 
@@ -63,7 +64,14 @@ ${Object.entries(S.accentFamilies).map(([k, v]) => `    ${q(k)}: ${val(v)},`).jo
   textStyles: [
 ${S.textStyles.map(t => `    ${inline(t)},`).join('\n')}
   ],
-
+${S.atoms ? `
+  // Bausteine: Bedienelemente und kleine Teile, aus denen die Komponenten gebaut werden (CSS in system.css).
+  // match = woran die Prüfung den Baustein erkennt · variants = Zusatzklassen mit Namen · control: false = nicht bedienbar.
+  // sample = Beispiel für die Übersicht: {v} = Variantenklassen, {icon:name:größe} = Icon. Fehlt ein Baustein, hier aufnehmen statt nachbauen.
+  atoms: [
+${S.atoms.map(t => `    ${inline(t)},`).join('\n')}
+  ],
+` : ''}
   // Die Regeln. \`checks\` = Kürzel der Messungen in measure() (factory/factory.js); nur diese zählen. Leer = nicht gemessen.
   // \`ctl\` = Werte, die die Ansicht „Regeln“ zum Einstellen anbietet. \`code\` in Backticks wird als Code gesetzt.
   // {unit}, {inset}, {limits.sizes} … sind Platzhalter für die Werte oben.
