@@ -146,12 +146,12 @@ el.setAttribute('width', '320');</pre>
 }
 
 // Figma-Daten verdichten: Standardwerte weglassen, nur benutzte Tokens mitgeben (die Daten laufen durch figma_execute)
-function compactFigma(data) {
+function compactFigma(data, trees = data.layouts.map(l => l.tree)) {
   const used = new Set();
   const drop = (o, k, v) => { if (JSON.stringify(o[k]) === JSON.stringify(v)) delete o[k]; };
   const col = c => { if (c && c.token) used.add(c.token); if (c && c.token === null) delete c.token; };
   const walk = n => {
-    drop(n, 'opacity', 1); drop(n, 'abs', false); drop(n, 'grow', false); drop(n, 'area', null);
+    drop(n, 'opacity', 1); drop(n, 'vars', []); drop(n, 'abs', false); drop(n, 'grow', false); drop(n, 'area', null);
     if (/^(auto|normal)$/.test(n.alignSelf || '')) delete n.alignSelf;
     for (const k of ['fill', 'gradient', 'stroke', 'img', 'icon', 'clamp']) drop(n, k, null);
     for (const k of ['clip', 'truncate', 'nowrap', 'bleed']) drop(n, k, false);
@@ -165,7 +165,8 @@ function compactFigma(data) {
     (n.children || []).forEach(walk);
     for (const k of Object.keys(n)) if (typeof n[k] === 'number') n[k] = Math.round(n[k] * 10) / 10;
   };
-  data.layouts.forEach(l => walk(l.tree));
+  trees.forEach(walk);
+  if (data.ink) col(data.ink);
   data.tokens = data.tokens.filter(t => used.has(t.name));
   return data;
 }
@@ -183,6 +184,11 @@ const result = await withPage(pageURL(`view=layouts&still&media=none&system=${en
     }
     if (kind === 'html' || kind === 'all') write(`${cid}/${cid}.html`, await page.eval(`Factory.exportHTML(${JSON.stringify(cid)})`));
     if (kind === 'figma' || kind === 'all') write(`${cid}.figma.json`, JSON.stringify(compactFigma(await page.eval(`Factory.exportFigma(${JSON.stringify(cid)})`))));
+  }
+  // Bausteine und Icons einmal je Regelwerk: in Figma zuerst CF.buildAtoms(…), danach die Komponenten
+  if (kind === 'figma' || kind === 'all') {
+    const atoms = await page.eval('Factory.exportFigmaAtoms()');
+    write('_bausteine.figma.json', JSON.stringify(compactFigma(atoms, atoms.atoms.flatMap(a => a.sets.map(x => x.tree)))));
   }
   return { errors: page.errors };
 }, { width: 1600, height: 1200 });

@@ -65,6 +65,8 @@ Bedienelemente, Chips und Fortschrittsbalken kommen **nur aus den Bausteinen** d
 
 Farbe und Abstand darf eine Komponente anpassen (eigene Klasse zusätzlich, nur Tokens), Form und Höhe nicht. Die Regel „Bausteine statt Eigenbau“ (R12 / Z13, Soll) misst Bedienelemente ohne Baustein, Balken ohne `.progress`, Bausteine in einer Höhe ohne passende Variante und Icons außerhalb von `h.icon`. Fehlt etwas: Baustein oder Variante in **allen** Regelwerken ergänzen (`atoms` und CSS), nicht in der Komponente nachbauen.
 
+Die Klasse und die Namen der Varianten sind der gemeinsame Vertrag; wie ein Baustein aussieht, legt jedes Regelwerk selbst fest (im ZDS z. B. andere Radien, Höhen oder zusätzliche Varianten). Gibt es eine Variante nur in einem Regelwerk, bekommen die übrigen dieselbe Klasse als schlichte Fassung. Aufträge dazu kommen aus „Regeln“ → Bausteine („Ändern“, „Neuer Baustein“, „Auf Baustein umstellen“, „Als Baustein aufnehmen“).
+
 ## Wenn etwas auffällt: eine Regel daraus machen
 
 So ist das System entstanden: Etwas wirkt falsch, man findet heraus, warum, und schreibt es als Regel auf. Wenn der Nutzer so etwas sagt („zu viele Grautöne“, „die Abstände wirken unruhig“):
@@ -108,7 +110,7 @@ Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts
 - `node tools/export.mjs tokens|html|figma|wc|all [id] --system <id>` schreibt nach `export/<regelwerk>/`: `tokens.json` (W3C Design Tokens) und `tokens.css`, je Komponente eine eigenständige HTML-Seite, `<id>.figma.json` für Figma. `export/` ist nicht im Repository.
 - **Web Component** (`node tools/export.mjs wc <id>`): `<cf-<id>>` mit Shadow DOM; enthält den unveränderten Quelltext der Komponente, die Tokens des Regelwerks und den Feinschliff. Attribute `layout`, `state`, `width`; Eigenschaften `data`, `images`.
 - **Svelte**-Übergaben schreibst du nach `export/<regelwerk>/<id>/svelte/` (Svelte-5-Komponente mit Runes, Props für Inhalte, `layout` und `state`, scoped Styles, Tokens nur als CSS-Variablen aus `tokens.css`). Die Quelle `components/<id>.js` bleibt unverändert.
-- Figma: `tools/figma-builder.js` per `figma_execute` ausführen (legt `globalThis.CF` an), dann `await CF.build(daten)` oder `await CF.buildFromURL(url)`. Ergebnis: Seite „Component Factory“ → Section je Regelwerk → Component Set je Komponente mit den Layouts als Varianten, Auto-Layout, Farben als lokale Variablen „Component Factory · <Regelwerk>“. Vorher Datei mit `figma_navigate` (lock) pinnen, nie in Bibliotheksdateien bauen (ZDS-Icons, ZDS-Dokument).
+- Figma: `tools/figma-builder.js` per `figma_execute` ausführen (legt `globalThis.CF` an), dann **zuerst** `await CF.buildAtoms(export/<regelwerk>/_bausteine.figma.json, { icons })` (Section „Bausteine · <Regelwerk>“: ein Component Set je Baustein, eigener Icon-Satz), danach je Komponente `await CF.build(daten, { icons })`. Bausteine werden in den Karten Instanzen mit Overrides für Text, Icon, Fläche und Schatten; ohne `buildAtoms` bleiben sie Frames. Im ZDS `icons` = Keys aus der Library ZDS-Icons (`rghctZbuOc45dshXjoTH8l`), fehlende Icons kommen aus dem eigenen Icon-Satz. Ergebnis: Seite „Component Factory“ → Section je Regelwerk → Component Set je Komponente mit den Layouts als Varianten, Auto-Layout, Farben als lokale Variablen „Component Factory · <Regelwerk>“. Vorher Datei mit `figma_navigate` (lock) pinnen, nie in Bibliotheksdateien bauen (ZDS-Icons, ZDS-Dokument).
 
 ## Sonst
 
