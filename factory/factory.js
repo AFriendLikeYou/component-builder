@@ -173,7 +173,7 @@ const ICONS = {
   power: '<path d="M12 4v8"/><path d="M7.5 7a7 7 0 1 0 9 0"/>',
   plane: '<path d="M10.5 13.5 3.5 11l1.5-1.5 7 1 4.2-4.3a1.8 1.8 0 0 1 2.6 2.6L14.5 13l1 7-1.5 1.5-2.5-7"/>',
 };
-const icon = (name, size = 20) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.more}</svg>`;
+const icon = (name, size = 20) => `<svg class="icon" data-icon="${name}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.more}</svg>`;
 
 /* ---------- Zeit ---------- */
 function zoned(tz, locale = 'de-DE') {
@@ -1223,6 +1223,68 @@ function bindWidthTools() {
   });
 }
 
+/* ---------- Übergabe: HTML/CSS, Tokens, React, Figma ---------- */
+async function runExport(kind, cid) {
+  const r = await fetch('/api/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id: cid, system: SYS_ID }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || `Export fehlgeschlagen (${r.status})`);
+  return j.files || [];
+}
+const fileLinks = files => files.map(f => `<a href="/${esc(f)}" target="_blank" rel="noopener"><code>${esc(f)}</code></a>`).join(' ');
+function reactPrompt(c) {
+  const Name = c.id.replace(/(^|-)([a-z])/g, (m, a, b) => b.toUpperCase());
+  return `Übergabe als React: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
+Erst node tools/export.mjs tokens --system ${SYS_ID} und node tools/export.mjs html ${c.id} --system ${SYS_ID} (Referenz, exakt so soll es aussehen).
+Dann schreib export/${SYS_ID}/${c.id}/react/${Name}.jsx, ${Name}.module.css und README.md:
+- eine Funktionskomponente <${Name} layout="${c.layouts[0].id}" …>, layout ∈ ${c.layouts.map(l => `"${l.id}"`).join(', ')}${(c.states || []).length ? `, optional state ∈ ${c.states.map(x => `"${x}"`).join(', ')}` : ''}
+- Props für alle Inhalte aus data (sinnvolle Namen, Standardwerte = heutige Beispieldaten), Bilder als src-Props
+- Markup, Flächen und Maße 1:1 wie in der Fabrik; Klassen als CSS-Module; Tokens nur als CSS-Variablen aus export/${SYS_ID}/tokens.css, keine festen Farbwerte
+- Bedienelemente als echte <button> mit aria-label, onClick-Props
+- README: Einbindung, Props-Tabelle, Hinweis auf tokens.css und die Schriften
+Keine neuen Abhängigkeiten außer React. Ändere components/${c.id}.js nicht.`;
+}
+function figmaPrompt(c) {
+  return `Übergabe nach Figma: Komponente „${c.name}“ (components/${c.id}.js), Regelwerk ${S.name} (${SYS_ID}).
+1. node tools/export.mjs figma ${c.id} --system ${SYS_ID} schreibt export/${SYS_ID}/${c.id}.figma.json.
+2. figma_get_status: welche Datei ist verbunden? Pinne sie mit figma_navigate (lock: true). Nicht in Bibliotheksdateien wie ZDS-Icons oder dem ZDS-Dokument bauen – dann abbrechen und melden.
+3. Führe den Inhalt von tools/figma-builder.js per figma_execute aus (legt globalThis.CF an).
+4. Dann: await CF.buildFromURL('http://localhost:4173/export/${SYS_ID}/${c.id}.figma.json'). Wenn das Plugin nicht laden darf: JSON-Datei lesen und await CF.build(<Inhalt>) aufrufen.
+5. Berichte Seite, Section, Set-ID und die Hinweise aus dem Ergebnis (notes).`;
+}
+function bindHandoff(sec, c) {
+  const bar = sec.querySelector('.cf-handbar');
+  sec.querySelector('[data-act="handoff"]')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!bar.hidden) { bar.hidden = true; btn.classList.remove('on'); return; }
+    bar.hidden = false;
+    btn.classList.add('on');
+    bar.innerHTML = `<p class="cf-stress-sum"><b>Übergabe</b> im Regelwerk ${esc(S.name)} – Regeln und Tokens bleiben erhalten. Dateien landen in <code>export/${SYS_ID}/</code>.</p>
+      <div class="cf-hand">
+        <div><b>HTML + CSS</b><span>Eigenständige Seite mit allen Layouts, Tokens und Typo-Klassen.</span><button type="button" class="cf-btn" data-ex="html"${F.live ? '' : ' disabled'}>Exportieren</button></div>
+        <div><b>Tokens</b><span>W3C-Design-Tokens (JSON) und CSS-Variablen des Regelwerks.</span><button type="button" class="cf-btn" data-ex="tokens"${F.live ? '' : ' disabled'}>Exportieren</button></div>
+        <div><b>React</b><span>Komponente mit Props für Inhalte, Layout und Zustand, CSS-Module, README.</span><button type="button" class="cf-btn is-primary" data-ex="react">${F.live ? 'Von Claude bauen lassen' : 'Anweisung für Claude'}</button></div>
+        <div><b>Figma</b><span>Component Set mit den Layouts als Varianten, Auto-Layout, Farben als Variablen.</span><button type="button" class="cf-btn" data-ex="figma-data"${F.live ? '' : ' disabled'}>Figma-Daten</button><button type="button" class="cf-btn is-primary" data-ex="figma">${F.live ? 'Nach Figma (Claude)' : 'Anweisung für Claude'}</button></div>
+      </div>
+      <p class="cf-handout"></p>
+      <div class="b-log ed-log cf-handlog"></div>`;
+    const out = bar.querySelector('.cf-handout'), log = bar.querySelector('.cf-handlog');
+    bar.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', async () => {
+      const k = b.dataset.ex;
+      if (k === 'react' || k === 'figma') {
+        const prompt = k === 'react' ? reactPrompt(c) : figmaPrompt(c);
+        if (!F.live) return copyHint(log, 'Anweisung für Claude Code', prompt);
+        bar.querySelectorAll('button').forEach(x => { x.disabled = true; });
+        return generate(prompt, { log, view: 'layouts', figma: k === 'figma' });
+      }
+      b.disabled = true;
+      out.textContent = 'Exportiert …';
+      try { out.innerHTML = `Geschrieben: ${fileLinks(await runExport(k === 'figma-data' ? 'figma' : k, k === 'tokens' ? null : c.id))}`; }
+      catch (err) { out.textContent = err.message; }
+      b.disabled = false;
+    }));
+  });
+}
+
 /* ---------- Varianten gezielt erzeugen ---------- */
 const DIRECTIONS = [
   { id: 'kompakter', name: 'Kompakter', desc: 'weniger Höhe, dichtere Abstände, nur das Nötigste bleibt sichtbar' },
@@ -1389,17 +1451,18 @@ function viewLayouts() {
   main.innerHTML = `<div class="v-layouts">${errorsHTML()}${state.solo ? '' : widthToolsHTML()}${list.length ? list.map(c => {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
-  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button><button type="button" class="cf-edit cf-var-btn" data-act="states">${icon('grid', 14)}Familie & Zustände</button>`}</header>
+  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button><button type="button" class="cf-edit cf-var-btn" data-act="states">${icon('grid', 14)}Familie & Zustände</button><button type="button" class="cf-edit cf-var-btn" data-act="handoff">${icon('arrow-up-right', 14)}Übergabe</button>`}</header>
   <ul class="cf-viol">${findingsItems(bps, true)}</ul>
   <div class="cf-stressbar" hidden></div>
   <div class="cf-varbar" hidden></div>
   <div class="cf-varbar cf-statebar" hidden></div>
+  <div class="cf-varbar cf-handbar" hidden></div>
   <div class="cf-lay-grid">${layGridHTML(c)}</div>
 </section>`;
   }).join('') : emptyHTML()}</div>`;
   main.querySelectorAll('.cf-lay [data-act="viol"]').forEach(b => b.addEventListener('click', () => b.closest('.cf-lay').classList.toggle('show-viol')));
   bindLayItems(main);
-  main.querySelectorAll('.cf-lay').forEach(sec => { const c = F.byId[sec.id.slice(4)]; bindStress(sec, c); bindVariant(sec, c); bindStates(sec, c); });
+  main.querySelectorAll('.cf-lay').forEach(sec => { const c = F.byId[sec.id.slice(4)]; bindStress(sec, c); bindVariant(sec, c); bindStates(sec, c); bindHandoff(sec, c); });
   bindWidthTools();
   if (state.solo) main.querySelectorAll('.cf-lay').forEach(r => r.classList.add('show-viol'));
   else if (state.c) requestAnimationFrame(() => document.getElementById(`lay-${state.c}`)?.scrollIntoView({ block: 'start' }));
@@ -1625,6 +1688,7 @@ function viewRules(keepScroll) {
     <div class="rs-headrow">
       <h1 class="rs-h1">Regeln für alle Komponenten</h1>
       <button type="button" class="cf-btn${rulesEdit ? ' is-primary' : ''}" data-a="rules-edit">${rulesEdit ? `${icon('check', 14)}Fertig` : `${icon('edit', 14)}Regeln anpassen`}</button></div>
+    ${F.live ? `<div class="rs-syscmp"><button type="button" class="cf-btn" data-a="tok-export">${icon('arrow-up-right', 14)}Tokens exportieren</button><span class="rs-tokout"></span></div>` : ''}
     ${F.live && (window.CF_SYSTEMS || []).length > 1 ? `<div class="rs-syscmp">${(window.CF_SYSTEMS || []).filter(x => x.id !== SYS_ID).map(x => `<button type="button" class="cf-btn" data-syscmp="${esc(x.id)}">${icon('grid', 14)}Mit ${esc(x.name)} vergleichen</button>`).join('')}</div>` : ''}
     <p class="rs-lead">Jede Komponente entsteht in diesem System. ${measured.length} von ${S.rules.length} Regeln misst die Fabrik bei jedem Laden; die übrigen sind Gestaltungsregeln, auf die Claude und du achtet. Aktives Regelwerk: <b>${esc(S.name)}</b>, Quelle ist <code>${SYS_JS}</code> – dieselbe Datei, nach der Claude baut.${rulesEdit ? ' Werte ändern wirkt sofort: Alle Layouts werden neu gemessen, gespeichert wird erst mit „Übernehmen“.' : ''}</p>
     <dl class="rs-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
@@ -1684,6 +1748,7 @@ function viewRules(keepScroll) {
   const rerun = () => { applySystem(); viewRules(true); };
   main.querySelector('[data-a="rules-edit"]').addEventListener('click', () => { rulesEdit = !rulesEdit; viewRules(true); });
   main.querySelectorAll('[data-syscmp]').forEach(b => b.addEventListener('click', () => openSystemsCompare(b.dataset.syscmp)));
+  main.querySelector('[data-a="tok-export"]')?.addEventListener('click', async e => { const o = main.querySelector('.rs-tokout'); e.currentTarget.disabled = true; try { o.innerHTML = fileLinks(await runExport('tokens')); } catch (err) { o.textContent = err.message; } e.currentTarget.disabled = false; });
   main.querySelectorAll('[data-seg^="lvl:"]').forEach(b => b.addEventListener('click', () => {
     const r = S.rules[+b.dataset.seg.slice(4)];
     if (b.dataset.v === 'soll') r.level = 'soll'; else delete r.level;
@@ -2611,7 +2676,7 @@ function exactComp(text) {
 }
 
 // Schickt eine Anfrage an Claude Code (tools/serve.mjs) und zeigt die Arbeitsschritte live.
-async function generate(prompt, { log, view = 'build', onStart } = {}) {
+async function generate(prompt, { log, view = 'build', onStart, figma = false } = {}) {
   const L = makeLog(log, 'Claude arbeitet …');
   window.__cfHold = true;
   onStart?.();
@@ -2636,7 +2701,7 @@ async function generate(prompt, { log, view = 'build', onStart } = {}) {
     }
   };
   try {
-    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID }) });
+    const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: SYS_ID, figma }) });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Der Server antwortet mit ${res.status}.`); }
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = '';
@@ -2918,6 +2983,212 @@ function viewCanvas() {
 
   if (me.playing) pilot();
 }
+
+/* ---------- Übergabe: Tokens, HTML/CSS und Figma-Daten ---------- */
+// Läuft im Browser (tools/export.mjs ruft es headless auf). Liefert reine Daten; Dateien schreibt das Werkzeug.
+const r2 = v => Math.round(v * 100) / 100;
+function cssTextOf(match) {
+  const out = [];
+  for (const sheet of document.styleSheets) {
+    if (!match(sheet.href || '')) continue;
+    let rules; try { rules = sheet.cssRules; } catch { continue; }
+    for (const r of rules) if (!(r instanceof CSSImportRule)) out.push(r.cssText);
+  }
+  return out.join('\n');
+}
+
+F.exportTokens = () => ({
+  system: SYS_ID, name: S.name, version: S.version,
+  colors: tokenPalette().map(t => ({ name: t.name, hex: hexOf(t.rgb), a: r2(t.a) })),
+  spacing: S.spacing, radius: { card: S.radius, inner: S.innerRadii }, grid: { unit: U, inset: S.inset, width: S.width, widths: widthsOf() },
+  families: S.families, typeScale: S.typeScale, lineHeights: S.lineHeightRatios || { step: S.lineHeightStep },
+  textStyles: S.textStyles.map(t => ({ ...t, family: styleFamily(t) })),
+});
+
+F.exportHTML = cid => {
+  const c = F.byId[cid];
+  if (!c) throw new Error(`Unbekannte Komponente ${cid}`);
+  const sysCSS = cssTextOf(h => h.includes(`/systems/${SYS_ID}/system.css`));
+  // Schriften des Regelwerks (z. B. systems/zds/fonts.css) relativ einbinden – Lizenzschriften werden nie kopiert
+  const fontLinks = [];
+  for (const sheet of document.styleSheets) { if (!(sheet.href || '').includes(`/systems/${SYS_ID}/system.css`)) continue; try { for (const r of sheet.cssRules) if (r instanceof CSSImportRule) fontLinks.push(`<link rel="stylesheet" href="../../../systems/${SYS_ID}/${r.href.split('/').pop()}">`); } catch {} }
+  const compCSS = [...document.querySelectorAll('style[data-component]')].filter(s => s.dataset.component === cid).map(s => s.textContent).join('\n');
+  const cards = c.layouts.map(l => `<figure><figcaption><b>${esc(l.name)}</b> <span>${l.width} × ${bpOf(c, l).h} px</span></figcaption>\n${cardHTML(c, l)}\n${l.idea ? `<p>${esc(l.idea)}</p>` : ''}</figure>`).join('\n');
+  return `<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(c.name)} · ${esc(S.name)}</title>
+<!-- Übergabe aus der Component Factory: Regelwerk „${esc(S.name)}“ (systems/${SYS_ID}), Komponente components/${cid}.js, Stand ${new Date().toISOString().slice(0, 10)}.
+     Tokens und Typo-Klassen stehen im ersten <style>, die Komponente selbst im zweiten (auf [data-c="${cid}"] begrenzt). -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap">
+${fontLinks.join('\n')}
+<style>
+${sysCSS}
+</style>
+<style>
+${compCSS}
+</style>
+<style>
+body { margin: 0; padding: 40px; background: #f7f7f5; font: 14px/20px system-ui, sans-serif; color: #1b1b1b; }
+.handoff { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+.handoff figure { margin: 0; }
+.handoff figcaption { margin-bottom: 12px; }
+.handoff figcaption span, .handoff figure > p { color: #6b6b6b; font-size: 12px; }
+.handoff figure > p { max-width: ${S.width}px; }
+</style>
+</head>
+<body>
+<h1 style="font-size:20px;font-weight:500;margin:0 0 24px">${esc(c.name)} <span style="color:#9e9e9e;font-weight:400">· ${esc(S.name)}</span></h1>
+<div class="handoff">
+${cards}
+</div>
+</body>
+</html>
+`;
+};
+
+// Figma-Daten: jede Karte als Baum aus Rahmen (mit Auto-Layout, wo das CSS Flex ist), Texten (mit Stil-Läufen), SVG und Medien.
+function figmaColor(v) {
+  const c = parseColor(v);
+  if (!c || c.a < .01) return null;
+  return { hex: hexOf(c.rgb), a: r2(c.a), token: matchToken(c) };
+}
+function figmaShadows(v) {
+  if (!v || v === 'none') return [];
+  return v.split(/,(?![^(]*\))/).map(s => {
+    const col = s.match(/rgba?\([^)]+\)|color\([^)]+\)|#[0-9a-f]{3,8}/i)?.[0];
+    const nums = s.replace(col || '', '').match(/-?[\d.]+px/g)?.map(parseFloat) || [];
+    return col ? { color: figmaColor(col), x: nums[0] || 0, y: nums[1] || 0, blur: nums[2] || 0, spread: nums[3] || 0, inset: /inset/.test(s) } : null;
+  }).filter(x => x && x.color);
+}
+const figmaRadii = cs => ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map(k => parseFloat(cs[`border${k}Radius`]) || 0);
+function figmaStroke(cs) {
+  const sides = ['Top', 'Right', 'Bottom', 'Left'].map(sd => ({ w: cs[`border${sd}Style`] === 'none' ? 0 : parseFloat(cs[`border${sd}Width`]) || 0, color: figmaColor(cs[`border${sd}Color`]) }));
+  if (!sides.some(s => s.w && s.color)) return null;
+  const first = sides.find(s => s.w && s.color);
+  return { color: first.color, weights: sides.map(s => (s.color ? s.w : 0)) };
+}
+function figmaRuns(el) {
+  const runs = [];
+  let text = '';
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const n = walker.currentNode, p = n.parentElement, cs = getComputedStyle(p);
+    if (cs.display === 'none') continue;
+    let t = n.nodeValue.replace(/\s+/g, ' ');
+    if (!text || text.endsWith(' ')) t = t.replace(/^ /, '');
+    if (!t) continue;
+    if (cs.textTransform === 'uppercase') t = t.toUpperCase();
+    const lh = cs.lineHeight === 'normal' ? null : r2(parseFloat(cs.lineHeight));
+    const style = { family: normFamily(cs.fontFamily), size: r2(parseFloat(cs.fontSize)), weight: parseInt(cs.fontWeight, 10) || 400, italic: cs.fontStyle === 'italic', lh, ls: cs.letterSpacing === 'normal' ? 0 : r2(parseFloat(cs.letterSpacing)), color: figmaColor(cs.color), strike: cs.textDecorationLine.includes('line-through'), tabular: cs.fontVariantNumeric.includes('tabular') };
+    const last = runs[runs.length - 1];
+    if (last && JSON.stringify(last.style) === JSON.stringify(style)) last.end += t.length;
+    else runs.push({ start: text.length, end: text.length + t.length, style });
+    text += t;
+  }
+  const trimmed = text.replace(/\s+$/, '');
+  runs.forEach(r => { r.end = Math.min(r.end, trimmed.length); });
+  return { characters: trimmed, runs: runs.filter(r => r.end > r.start) };
+}
+const INLINE = /^(SPAN|EM|B|STRONG|I|A|SMALL|SUP|SUB|BR|CODE|MARK|S|U)$/;
+function figmaNode(el, cb) {
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || !el.getClientRects().length) return null;
+  const br = el.getBoundingClientRect();
+  const base = {
+    name: el.dataset?.area || el.getAttribute('aria-label') || (el.classList?.[0] ? `.${el.classList[0]}` : el.tagName.toLowerCase()),
+    area: el.dataset?.area || null,
+    x: r2(br.left - cb.left), y: r2(br.top - cb.top), w: r2(br.width), h: r2(br.height),
+    opacity: parseFloat(cs.opacity),
+    abs: cs.position === 'absolute',
+    grow: parseFloat(cs.flexGrow) > 0,
+    alignSelf: cs.alignSelf,
+  };
+  if (el instanceof SVGSVGElement) {
+    const clone = el.cloneNode(true);
+    const color = cs.color;
+    clone.setAttribute('width', br.width); clone.setAttribute('height', br.height);
+    clone.querySelectorAll('*').forEach(k => {
+      for (const at of ['fill', 'stroke']) if (k.getAttribute(at) === 'currentColor') k.setAttribute(at, color);
+      const st = k.getAttribute('style') || '';
+      if (/var\(/.test(st) || /var\(/.test(k.getAttribute('fill') || '') || /var\(/.test(k.getAttribute('stroke') || '')) {
+        const kc = getComputedStyle(el.querySelectorAll('*')[[...clone.querySelectorAll('*')].indexOf(k)]);
+        if (/var\(/.test(k.getAttribute('fill') || '')) k.setAttribute('fill', kc.fill);
+        if (/var\(/.test(k.getAttribute('stroke') || '')) k.setAttribute('stroke', kc.stroke);
+        k.removeAttribute('style');
+        k.setAttribute('font-family', normFamily(kc.fontFamily));
+      }
+      k.classList?.remove('cf-spin');
+    });
+    if (clone.getAttribute('stroke') === 'currentColor') clone.setAttribute('stroke', color);
+    if (clone.getAttribute('fill') === 'currentColor') clone.setAttribute('fill', color);
+    return { ...base, type: 'svg', svg: clone.outerHTML, icon: el.classList.contains('icon') ? (el.dataset.icon || null) : null, color: figmaColor(color) };
+  }
+  if (el.matches('[data-media]')) {
+    return { ...base, type: 'media', fill: figmaColor(cs.backgroundColor), radius: figmaRadii(cs), img: el.querySelector('img')?.currentSrc || null, bleed: el.hasAttribute('data-bleed') };
+  }
+  const kids = [...el.childNodes];
+  const hasText = kids.some(n => n.nodeType === 3 && n.nodeValue.trim());
+  const elemKids = kids.filter(n => n.nodeType === 1 && !/^(STYLE|SCRIPT)$/.test(n.tagName));
+  const inlineOnly = elemKids.every(k => INLINE.test(k.tagName) && getComputedStyle(k).display.startsWith('inline'));
+  const frame = {
+    ...base, type: 'frame',
+    fill: figmaColor(cs.backgroundColor), gradient: cs.backgroundImage !== 'none' ? cs.backgroundImage : null,
+    radius: figmaRadii(cs), stroke: figmaStroke(cs), shadows: figmaShadows(cs.boxShadow),
+    clip: /hidden|clip/.test(cs.overflowX + cs.overflowY),
+    pad: ['Top', 'Right', 'Bottom', 'Left'].map(sd => parseFloat(cs[`padding${sd}`]) || 0),
+  };
+  if (hasText && inlineOnly) {
+    const txt = { ...base, type: 'text', ...figmaRuns(el), align: cs.textAlign, truncate: cs.textOverflow === 'ellipsis', clamp: cs.webkitLineClamp && cs.webkitLineClamp !== 'none' ? +cs.webkitLineClamp : null, nowrap: cs.whiteSpace === 'nowrap' };
+    // Text mit eigener Fläche (Chip, Button-Beschriftung): Rahmen mit Text darin
+    if (frame.fill || frame.stroke || frame.pad.some(Boolean) || frame.radius.some(Boolean)) {
+      const inner = { ...txt, name: 'Text', area: null, x: base.x + frame.pad[3], y: base.y + frame.pad[0], w: r2(base.w - frame.pad[1] - frame.pad[3]), h: r2(base.h - frame.pad[0] - frame.pad[2]), abs: false, grow: false };
+      return { ...frame, layout: { dir: 'H', gap: 0, justify: cs.justifyContent === 'normal' ? (cs.textAlign === 'center' ? 'center' : 'flex-start') : cs.justifyContent, align: 'center', wrap: false }, children: [inner] };
+    }
+    return txt;
+  }
+  if (/flex/.test(cs.display)) {
+    const dir = cs.flexDirection.startsWith('column') ? 'V' : 'H';
+    frame.layout = { dir, gap: parseFloat(dir === 'V' ? cs.rowGap : cs.columnGap) || 0, crossGap: parseFloat(dir === 'V' ? cs.columnGap : cs.rowGap) || 0, justify: cs.justifyContent, align: cs.alignItems, wrap: cs.flexWrap === 'wrap', reverse: cs.flexDirection.endsWith('reverse') };
+  }
+  const children = [];
+  for (const n of kids) {
+    if (n.nodeType === 1) { const k = figmaNode(n, cb); if (k) children.push(k); }
+    else if (n.nodeType === 3 && n.nodeValue.trim()) {
+      // Text neben Elementen: als eigener Text mit der Lage aus dem Range
+      const rg = document.createRange(); rg.selectNodeContents(n);
+      const rr = rg.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const t = { characters: n.nodeValue.replace(/\s+/g, ' ').trim(), runs: [] };
+      t.runs = [{ start: 0, end: t.characters.length, style: { family: normFamily(style.fontFamily), size: r2(parseFloat(style.fontSize)), weight: parseInt(style.fontWeight, 10) || 400, italic: style.fontStyle === 'italic', lh: style.lineHeight === 'normal' ? null : r2(parseFloat(style.lineHeight)), ls: 0, color: figmaColor(style.color), strike: false, tabular: false } }];
+      children.push({ type: 'text', name: 'Text', area: null, x: r2(rr.left - cb.left), y: r2(rr.top - cb.top), w: r2(rr.width), h: r2(rr.height), opacity: 1, abs: false, grow: false, alignSelf: 'auto', ...t, align: 'left', truncate: false, clamp: null, nowrap: true });
+    }
+  }
+  // Reihenfolge wie dargestellt (CSS order)
+  if (frame.layout) children.sort((a, b) => (frame.layout.dir === 'V' ? a.y - b.y : a.x - b.x) * (frame.layout.reverse ? -1 : 1));
+  frame.children = children;
+  return frame;
+}
+F.exportFigma = cid => {
+  const c = F.byId[cid];
+  if (!c) throw new Error(`Unbekannte Komponente ${cid}`);
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:0;top:0;';
+  document.body.appendChild(host);
+  try {
+    const layouts = c.layouts.map(l => {
+      host.innerHTML = cardHTML(c, l);
+      const card = host.firstElementChild;
+      const tree = figmaNode(card, card.getBoundingClientRect());
+      tree.name = l.name;
+      const bp = bpOf(c, l);
+      return { id: l.id, name: l.name, idea: l.idea || '', w: tree.w, h: tree.h, family: l.family || null, variantOf: l.variantOf || null, ok: bp?.ok ?? null, tree };
+    });
+    return { system: SYS_ID, systemName: S.name, component: { id: c.id, name: c.name }, tokens: F.exportTokens().colors, layouts, created: new Date().toISOString() };
+  } finally { host.remove(); }
+};
 
 /* ---------- Prüfbericht (für tools/check.mjs) ---------- */
 function writeReport() {

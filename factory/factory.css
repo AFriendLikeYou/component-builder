@@ -625,3 +625,16 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 
 .cf-checks input { flex: none; width: auto; min-width: 0; height: auto; padding: 0; background: none; }
 .cf-row-head > .cf-edit { margin-left: 0; }
+
+/* Übergabe */
+.cf-hand { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.cf-hand > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border-radius: 12px; background: #f7f7f5; }
+.cf-hand b { font-size: 13px; font-weight: 500; }
+.cf-hand span { flex: 1; font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.cf-hand .cf-btn + .cf-btn { margin-top: -2px; }
+.cf-handout { margin: 0; font-size: 12px; line-height: 20px; color: var(--ink-2); overflow-wrap: anywhere; }
+.cf-handout:empty { display: none; }
+.cf-handout a, .rs-tokout a { color: var(--ink); text-decoration: none; margin-right: 8px; }
+.cf-handout a:hover code, .rs-tokout a:hover code { background: #e8effd; }
+.cf-handout code, .rs-tokout code { font: 11px/18px var(--mono); padding: 1px 5px; border-radius: 5px; background: #ecece9; }
+.rs-tokout { font-size: 12px; }

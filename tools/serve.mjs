@@ -11,6 +11,7 @@ import { listMedia } from './media.mjs';
 import { createClaudeJob, claudeAvailable } from './claude-bridge.mjs';
 import { renderSystemJS, validSystem } from './system-file.mjs';
 import { createHistory } from './history.mjs';
+import { execFile } from 'node:child_process';
 
 const PORT = +process.env.PORT || 4173;
 const TYPES = {
@@ -107,13 +108,13 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', d => { body += d; if (body.length > 20000) req.destroy(); });
     req.on('end', () => {
-      let prompt = '', system = 'fabrik';
-      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; } catch {}
+      let prompt = '', system = 'fabrik', figma = false;
+      try { const j = JSON.parse(body); prompt = String(j.prompt || '').trim(); if (/^[a-z0-9-]+$/.test(j.system || '')) system = j.system; figma = j.figma === true; } catch {}
       if (!prompt) { res.writeHead(400); return res.end(); }
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' });
       const send = ev => { try { res.write(JSON.stringify(ev) + '\n'); } catch {} };
       console.log(`→ Claude: ${prompt}`);
-      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, onEvent: send });
+      job = createClaudeJob(prompt, { root: ROOT, model: process.env.CF_MODEL, system, figma, onEvent: send });
       job.done.then(ev => {
         console.log(ev.type === 'done' ? `✓ fertig${ev.id ? ` (${ev.id})` : ''}` : `✕ ${ev.text}`);
         try { if (ev.type === 'done') history.commitNow(`Claude: ${prompt.split('\n')[0].slice(0, 100)}`, { claude: true }); } catch (e) { console.error('Verlauf:', e.message); }
@@ -141,6 +142,18 @@ const server = http.createServer((req, res) => {
       console.log(`§ Regeln übernommen (System v${b.system.version})`);
       history.commitNow(`Regeln: ${String(b.message || 'angepasst').slice(0, 90)} (${sid} v${b.system.version})`);
       sendJSON(res, 200, { ok: true });
+    });
+    return;
+  }
+  if (url.pathname === '/api/export' && req.method === 'POST') {
+    readBody(req).then(b => {
+      const kind = String(b?.kind || ''), sys = String(b?.system || 'fabrik'), cid = b?.id ? String(b.id) : null;
+      if (!['tokens', 'html', 'figma', 'all'].includes(kind) || !/^[a-z0-9-]+$/.test(sys) || (cid && !validId(cid))) return sendJSON(res, 400, { ok: false, error: 'Ungültiger Export' });
+      execFile(process.execPath, [path.join(ROOT, 'tools', 'export.mjs'), kind, ...(cid ? [cid] : []), '--system', sys], { cwd: ROOT, timeout: 120000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+        const line = String(stdout || '').trim().split('\n').pop();
+        try { const j = JSON.parse(line); console.log(`⇪ Export ${kind}${cid ? ` ${cid}` : ''} (${sys}): ${j.files.length} Dateien`); return sendJSON(res, 200, j); } catch {}
+        sendJSON(res, 500, { ok: false, error: err ? err.message : 'Export ohne Ergebnis' });
+      });
     });
     return;
   }

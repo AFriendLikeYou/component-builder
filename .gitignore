@@ -5,3 +5,4 @@ media/_media.js
 
 # Lizenzschriften der ZEIT – nur lokal, nie ins öffentliche Repository
 systems/zds/fonts/
+export/

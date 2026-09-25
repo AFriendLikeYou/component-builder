@@ -20,7 +20,9 @@ Arbeite strikt nach CLAUDE.md und dem aktiven Regelwerk (Datei steht unten). Lie
 - Danach immer: node tools/check.mjs <id> bis alles ✓ ist. Dann den Screenshot NEU erzeugen (node tools/shot.mjs <id> --layouts; PNGs in shots/ von vorher sind veraltet), ansehen und offensichtliche optische Fehler beheben.
 - Zum Schluss höchstens zwei kurze Sätze auf Deutsch, was du gemacht hast. Letzte Zeile genau: ID: <id der betroffenen Komponente> (oder ID: - wenn keine).`;
 
-const TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(node tools/check.mjs:*)', 'Bash(node tools/shot.mjs:*)'];
+const TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash(node tools/check.mjs:*)', 'Bash(node tools/shot.mjs:*)', 'Bash(node tools/export.mjs:*)'];
+// Nur für „Nach Figma“: Figma über figma-console (Plugin „Desktop Bridge“ muss laufen)
+const FIGMA_TOOLS = ['mcp__figma-console__figma_get_status', 'mcp__figma-console__figma_navigate', 'mcp__figma-console__figma_execute'];
 
 function stepFor(tool, input, root) {
   const rel = p => (p ? path.relative(root, p) || p : '');
@@ -40,8 +42,12 @@ function stepFor(tool, input, root) {
     case 'Bash':
       if ((m = bash.match(/tools\/check\.mjs\s*([^|&;>]*)/))) return { code: `rules.check(${m[1].trim() ? `"${m[1].trim()}"` : ''})`, kind: 'check' };
       if ((m = bash.match(/tools\/shot\.mjs\s*([^|&;>]*)/))) return { code: `render.snapshot("${m[1].trim()}")`, kind: 'shot' };
+      if ((m = bash.match(/tools\/export\.mjs\s*([^|&;>]*)/))) return { code: `handoff.export("${m[1].trim()}")`, kind: 'export' };
       return { code: `shell("${bash.slice(0, 40)}")`, kind: 'shell' };
     case 'TodoWrite': return null;
+    case 'mcp__figma-console__figma_execute': return { code: 'figma.execute()', kind: 'figma' };
+    case 'mcp__figma-console__figma_get_status': return { code: 'figma.status()', kind: 'figma' };
+    case 'mcp__figma-console__figma_navigate': return { code: 'figma.navigate()', kind: 'figma' };
     default: return { code: `${tool.toLowerCase()}()`, kind: 'other' };
   }
 }
@@ -58,10 +64,10 @@ function detailFor(kind, text, isError) {
 }
 
 // onEvent({type:'step', code}) · ({type:'detail', text}) ; done → {type:'done', id, text, cost} | {type:'error', text}
-export function createClaudeJob(prompt, { root, model, system = 'fabrik', onEvent }) {
+export function createClaudeJob(prompt, { root, model, system = 'fabrik', figma = false, onEvent }) {
   const sys = `${SYSTEM}\nAktives Regelwerk: systems/${system}/system.js (Werte, Regeln) und systems/${system}/system.css (Tokens, Typo-Klassen). Prüfe mit node tools/check.mjs <id> --system ${system}, Screenshots mit node tools/shot.mjs <id> --layouts --system=${system}.`;
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-    '--allowedTools', ...TOOLS, '--append-system-prompt', sys];
+    '--allowedTools', ...TOOLS, ...(figma ? FIGMA_TOOLS : []), '--append-system-prompt', sys];
   if (model) args.push('--model', model);
   const proc = spawn(BIN, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
   const pending = new Map();

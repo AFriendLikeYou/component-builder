@@ -91,6 +91,12 @@ Läuft die Seite über `node tools/serve.mjs`, schickt die Eingabezeile in „Ba
 
 Varianten entstehen als **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert. `idea` erklärt in zwei Sätzen, was sich ändert und warum. `feedback/praeferenzen.js` sammelt, welche Varianten das Team behalten oder verworfen hat, mit Kommentar – lies die Datei vor jeder neuen Variante und richte dich danach.
 
+## Übergabe (Code und Figma)
+
+- `node tools/export.mjs tokens|html|figma|all [id] --system <id>` schreibt nach `export/<regelwerk>/`: `tokens.json` (W3C Design Tokens) und `tokens.css`, je Komponente eine eigenständige HTML-Seite, `<id>.figma.json` für Figma. `export/` ist nicht im Repository.
+- React-Übergaben landen in `export/<regelwerk>/<id>/react/` (Komponente mit Props für Inhalte, `layout` und `state`, CSS-Module, Tokens nur als CSS-Variablen). Die Quelle `components/<id>.js` bleibt unverändert.
+- Figma: `tools/figma-builder.js` per `figma_execute` ausführen (legt `globalThis.CF` an), dann `await CF.build(daten)` oder `await CF.buildFromURL(url)`. Ergebnis: Seite „Component Factory“ → Section je Regelwerk → Component Set je Komponente mit den Layouts als Varianten, Auto-Layout, Farben als lokale Variablen „Component Factory · <Regelwerk>“. Vorher Datei mit `figma_navigate` (lock) pinnen, nie in Bibliotheksdateien bauen (ZDS-Icons, ZDS-Dokument).
+
 ## Sonst
 
 - Vorschau: `open index.html` oder `node tools/serve.mjs` (http://localhost:4173, lädt bei jeder Änderung neu, verbindet die Eingabezeile mit Claude Code).
