@@ -6,13 +6,13 @@ Factory.tweaks("music", {
     "el": {
       "meta:fortschritt": {
         "cssG": {
-          "gridRow": "1",
+          "gridRow": "5",
           "gridColumn": "auto"
         }
       },
       "media:cover": {
         "cssG": {
-          "gridRow": "5",
+          "gridRow": "1",
           "gridColumn": "auto"
         }
       }
