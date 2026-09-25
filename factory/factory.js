@@ -191,19 +191,28 @@ function zoned(tz, locale = 'de-DE') {
   };
 }
 
-const helpers = c => ({ media: makeMedia(c), icon, esc, pad2, zoned, now: NOW, S });
+// Render-Bedingungen: Zustand (normal, hover, loading, empty, error) und Kartenbreite – für Zustände und Breakpoints
+const RENDER = { state: null, width: null };
+function withRender(opts, fn) {
+  const keep = { ...RENDER };
+  Object.assign(RENDER, opts);
+  try { return fn(); } finally { Object.assign(RENDER, keep); }
+}
+const helpers = (c, l) => ({ media: makeMedia(c), icon, esc, pad2, zoned, now: NOW, S, state: RENDER.state || 'normal', width: RENDER.width || l?.width || S.width });
 
 /* ---------- Karte rendern ---------- */
 function renderInner(c, l) {
-  try { return l.render(c.data, helpers(c)); }
+  try { return l.render(c.data, helpers(c, l)); }
   catch (e) { console.error(e); return `<div class="cf-error">${esc(c.id)} / ${esc(l.id)}: ${esc(e.message)}</div>`; }
 }
 function cardHTML(c, l) {
   const dark = l.dark ?? c.dark;
   const tw = F.tw[c.id]?.[l.id];
-  const H = tw?.height || l.height;
+  const w = RENDER.width || l.width;
+  const H = tw?.height || (typeof l.height === 'function' ? l.height(w) : l.height);
   const h = H ? `height:${H}px;` : '';
-  return `<div class="cf-card${dark ? ' is-dark' : ''}" data-c="${esc(c.id)}" data-l="${esc(l.id)}" style="width:${l.width}px;${h}padding:${l.padding ?? S.inset}px">${applyTweaks(renderInner(c, l), tw)}</div>`;
+  const st = RENDER.state && RENDER.state !== 'normal' ? ` is-state-${RENDER.state}${RENDER.state === 'hover' ? ' is-hover' : ''}` : '';
+  return `<div class="cf-card${dark ? ' is-dark' : ''}${st}" data-c="${esc(c.id)}" data-l="${esc(l.id)}" style="width:${w}px;${h}padding:${l.padding ?? S.inset}px">${applyTweaks(renderInner(c, l), tw)}</div>`;
 }
 
 /* ---------- Vermessen ---------- */
@@ -1214,10 +1223,15 @@ document.addEventListener('click', e => {
   });
 });
 
-function layGridHTML(c, scen) {
+// opts: { scen: Stresstest-Fall, state: Zustand, width: Breite } – alles gleichzeitig möglich
+function layGridHTML(c, opts = {}) {
+  const scen = opts.scen && opts.scen.id !== 'normal' ? opts.scen : null;
+  const cond = { state: opts.state && opts.state !== 'normal' ? opts.state : null, width: opts.width || layWidth || null };
+  const special = scen || cond.state || cond.width;
+  const run = (l, fn) => withRender(cond, () => (scen ? withData(c, stressData(c.data, scen.id), fn) : fn()));
   return c.layouts.map((l, i) => {
-    const sb = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => measureTemp(c, l)) : null;
-    const card = scen && scen.id !== 'normal' ? withData(c, stressData(c.data, scen.id), () => cardHTML(c, l)) : cardHTML(c, l);
+    const sb = special ? run(l, () => measureTemp(c, l)) : null;
+    const card = special ? run(l, () => cardHTML(c, l)) : cardHTML(c, l);
     return `<figure class="cf-lay-item" data-c="${esc(c.id)}" data-li="${i}">
     <figcaption><span>${pad2(i + 1)}</span>${esc(l.name)}${l.variantOf ? `<em class="cf-varchip" title="Variante von ${esc(l.variantOf)}">${esc(dirName(l.direction))}</em>` : ''}${state.solo || sb ? '' : `<button class="cf-edit" type="button">${icon('edit', 14)}Bearbeiten</button>`}${sb ? badgeHTML(sb) : ''}</figcaption>
     ${l.variantOf && !sb && !state.solo ? variantDecisionHTML(c, l) : ''}
