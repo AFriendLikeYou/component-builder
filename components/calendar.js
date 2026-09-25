@@ -60,8 +60,8 @@
       .ka-mon { height: 48px; display: flex; flex-direction: column; }
       .ka-nav { height: 32px; margin-bottom: 8px; display: flex; gap: 8px; }
 
-      /* Raster: 7 Spalten à 40 px + 6 × 4 px = 304 px */
-      .ka-cols { display: grid; grid-template-columns: repeat(7, 40px); column-gap: 4px; }
+      /* Raster: 7 Spalten + 6 × 4 px füllen die Breite (Fabrik 7 × 40 px = 304 px) */
+      .ka-cols { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); column-gap: 4px; }
       .ka-wds { height: 16px; }
       .ka-wds p { text-align: center; }
       .ka-wds .is-today { color: var(--c-accent); }
@@ -69,17 +69,19 @@
       .ka-tage { grid-auto-rows: 32px; row-gap: 4px; }
 
       .ka-d { position: relative; display: grid; place-items: center; }
-      .ka-d span { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; }
+      .ka-d span { width: 32px; height: 32px; border-radius: var(--r-pill); display: grid; place-items: center; }
       .ka-d.is-out { color: var(--c-ink-3); }
       .ka-d.is-today span { background: var(--c-accent); color: var(--c-surface); font-weight: 500; }
-      .ka-d.has::after { content: ''; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 999px; background: var(--c-ink-3); }
+      .ka-d.has::after { content: ''; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: var(--r-pill); background: var(--c-ink-3); }
 
-      .ka-woche { display: flex; flex-direction: column; gap: 8px; height: 72px; padding: 8px 0; border-radius: 16px; background: var(--c-fill); }
+      .ka-woche { display: flex; flex-direction: column; gap: 8px; height: 72px; padding: 8px 0; border-radius: var(--r-16); background: var(--c-fill); }
+      /* ZDS erlaubt für Flächen höchstens 8 px Radius */
+      .ka-woche.is-zds { border-radius: var(--r-8); }
       .ka-woche .ka-cols { grid-template-columns: repeat(7, 1fr); column-gap: 0; }
 
       /* Termine: der laufende als Block, die übrigen mit Randlinie */
       .ka-list { display: flex; flex-direction: column; gap: 8px; }
-      .ka-ev { border-radius: 8px; padding: 0 16px; }
+      .ka-ev { border-radius: var(--r-8); padding: 0 16px; }
       .ka-ev.is-now { background: var(--c-accent); color: var(--c-surface); }
       .ka-ev.is-now .ink-2 { color: var(--c-accent-soft); }
       .ka-ev:not(.is-now) { border-radius: 0; border-left: 2px solid var(--c-accent); padding-left: 14px; }
@@ -125,7 +127,7 @@
           return `
           <div class="ka">
             ${head(d, h, ['Vorige Woche', 'Nächste Woche'])}
-            <div class="ka-woche" data-area="text:woche">
+            <div class="ka-woche${h.S.id === 'zds' ? ' is-zds' : ''}" data-area="text:woche">
               <div class="ka-cols ka-wds">
                 ${WD.map((w, k) => `<p class="t-12 w-500 ink-3${week[k].today ? ' is-today' : ''}">${w}</p>`).join('')}
               </div>
