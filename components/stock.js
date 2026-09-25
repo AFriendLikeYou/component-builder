@@ -2,6 +2,8 @@
   // Aktie: Kurs, Verlauf und Kennzahlen. Kurse stehen als Zahlen in data und werden erst beim Rendern deutsch formatiert.
   // Die Farbe folgt der Richtung: im ZDS Grün/Rot aus den Status-Tokens, in der Fabrik fällt sie auf --c-accent/--c-warm zurück.
   // Die Kartenhöhe ist fest; die Höhe des Charts rechnet sich aus dem Innenabstand des Regelwerks.
+  // Zustände (h.state): „loading“ = Skelett in denselben Flächen und Maßen, „empty“ (keine Aktie gewählt) und „error“ = Meldung mit genau einer Handlung.
+  // Hover hebt hervor, was man bedienen kann: Name als Link, Zeitraum und Fadenkreuz; die Stile hängen an .is-hover (Vorschau) und :hover.
   const RANGES = [['1T', '1 Tag'], ['1W', '1 Woche'], ['1M', '1 Monat'], ['1J', '1 Jahr'], ['5J', '5 Jahre']];
   const num = (n, dg = 2) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: dg, maximumFractionDigits: dg });
   const signed = (n, dg = 2) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${num(Math.abs(n), dg)}`;
@@ -13,10 +15,32 @@
   const inner = (h, H) => ({ w: h.width - 2 * h.S.inset, h: H - 2 * h.S.inset });
   const rangeName = d => (RANGES.find(r => r[0] === d.range) || RANGES[2])[1];
 
-  const head = (d, h, right) => `
+  const head = (d, h, right, title) => `
     <div class="row between g-16 ak-head" data-area="text:kopf">
-      <p class="t-16 w-500 clip">${h.esc(d.name)}</p>
+      <p class="t-16 w-500 clip${title ? '' : ' ak-link'}">${h.esc(title ?? d.name)}</p>
       ${right ?? `<p class="t-12 ink-2 clip">${h.esc(d.code)} · ${h.esc(d.exchange)}</p>`}
+    </div>`;
+
+  // line = [Titel, Unterzeile] in der Listenzeile · w = feste Breite der Handlung dort (ohne Icon, damit der Text daneben Platz hat)
+  const MSG = {
+    empty: { icon: 'arrow-up-right', head: 'Aktie', title: 'Noch keine Aktie gewählt', text: 'Wähle einen Wert, dem du folgen willst', line: ['Keine Aktie gewählt', 'Wähle einen Wert'], action: 'Aktie suchen', actIcon: 'search', w: 112 },
+    error: { icon: 'close', title: 'Kurs nicht geladen', text: 'Prüfe deine Verbindung', line: ['Kurs nicht geladen', 'Prüfe deine Verbindung'], action: 'Erneut versuchen', actIcon: 'refresh', w: 136, error: true },
+  };
+  // Kopf in Meldungen: beim Fehler bleibt die Aktie stehen, leer heißt die Karte nur „Aktie“
+  const msgHead = (d, h, m, right) => (m.error ? head(d, h, right) : head(d, h, '', m.head));
+  const sk = (lh, w, bar = 8) => `<span class="ak-sk" style="height:${lh}px;--w:${w};--b:${bar}px"></span>`;
+  const tile = (h, m, cls, area, { size = 24, bleed } = {}) =>
+    `<div class="${cls} ak-tile${m && m.error ? ' is-error' : ''}"${bleed ? ' data-bleed' : ''}${area ? ` data-area="${area}"` : ''}>${m ? h.icon(m.icon, size) : ''}</div>`;
+  const act = (h, m, style = '') => `<div class="ak-acts" data-area="control:aktion"${style}><button class="btn-pill lg solid t-14 w-500">${h.icon(m.actIcon, 16)}${m.action}</button></div>`;
+  // Meldung mittig in der Höhe H: Kachel 48, Text 48, Handlung 40 (= 168). Bleibt oben ein Rest außerhalb des Rasters, rückt die Handlung 8 px ab.
+  const note = (h, m, H) => `
+    <div class="ak-none" style="height:${H}px" data-area="text:meldung">
+      ${tile(h, m, 'ak-badge')}
+      <div class="stack">
+        <p class="t-16 w-500 clip">${m.title}</p>
+        <p class="t-14 ink-2 clip">${m.text}</p>
+      </div>
+      ${act(h, m, (H - 168) % 16 ? ' style="margin-top:8px"' : '')}
     </div>`;
 
   // Veränderung mit Pfeil: ↗ steigt, ↘ fällt, → unverändert. Nie nur über die Farbe.
@@ -60,7 +84,8 @@
 
   // Großer Chart für „Verlauf“: Raster mit runden Werten rechts, Datum unten, Schlusskurs am Linienende,
   // darüber je Handelstag eine unsichtbare Spalte mit Fadenkreuz und Wert beim Überfahren.
-  function chart(s, w, H, h) {
+  // pointed = Handelstag, dessen Fadenkreuz im Zustand „hover“ steht
+  function chart(s, w, H, h, pointed = -1) {
     const v = s.map(p => p.v), lo = Math.min(...v), hi = Math.max(...v);
     const step = nice((hi - lo) / 3), dg = Number.isInteger(step) ? 0 : Number.isInteger(step * 10) ? 1 : 2;
     let a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step;
@@ -76,7 +101,7 @@
     const dx = pw / Math.max(1, v.length - 1);
     const cols = pts.map(([x, y], i) => {
       const l = Math.max(0, x - dx / 2), r = Math.min(pw, x + dx / 2);
-      return `<span class="ak-col${x > pw / 2 ? ' is-r' : ''}" style="left:${f(l)}px;width:${f(r - l)}px;--cx:${f(x - l)}px;--y:${f(y)}px"><span class="ak-tip t-12 num">${h.esc(s[i].d)} · ${num(s[i].v)}</span></span>`;
+      return `<span class="ak-col${x > pw / 2 ? ' is-r' : ''}${i === pointed ? ' is-pointed' : ''}" style="left:${f(l)}px;width:${f(r - l)}px;--cx:${f(x - l)}px;--y:${f(y)}px"><span class="ak-tip t-12 num">${h.esc(s[i].d)} · ${num(s[i].v)}</span></span>`;
     }).join('');
     return `<svg class="ak-svg" width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" aria-hidden="true">
       ${wash(id)}
@@ -92,8 +117,15 @@
   }
 
   // Tages- und 52-Wochen-Spanne: wie weit der Kurs vom Tief zum Hoch steht
-  const span = (label, lo, hi, v) => {
+  const span = (label, lo, hi, v, load) => {
     const p = hi > lo ? Math.min(1, Math.max(0, (v - lo) / (hi - lo))) : 0;
+    if (load) return `
+      <div class="ak-span">
+        <p class="t-12 ink-2 clip">${label}</p>
+        ${sk(16, '40px')}
+        <div class="progress" style="--p: 0"><i></i></div>
+        ${sk(16, '40px')}
+      </div>`;
     return `
       <div class="ak-span">
         <p class="t-12 ink-2 clip">${label}</p>
@@ -107,7 +139,10 @@
     id: 'stock',
     name: 'Aktie',
     aliases: ['stock', 'aktie', 'aktienchart', 'aktienkurs', 'kurs', 'börse', 'boerse', 'ticker', 'apple', 'aapl', 'chart'],
+    states: ['hover', 'loading', 'empty', 'error'],
     data: {
+      headline: 'Apple-Aktie nähert sich ihrem Rekordhoch',
+      teaser: 'Seit Ende August fast sieben Prozent plus – Anleger setzen auf die neuen iPhones.',
       name: 'Apple',
       code: 'AAPL',
       exchange: 'Nasdaq',
@@ -174,11 +209,11 @@
       .ak-plot { position: relative; }
       .ak-hov { position: absolute; left: 0; top: 0; cursor: crosshair; }
       .ak-col { position: absolute; top: 0; bottom: 0; }
-      .ak-col:hover::before { content: ''; position: absolute; left: var(--cx); top: 0; bottom: 0; width: 1px; background: var(--c-ink-3); }
-      .ak-col:hover::after { content: ''; position: absolute; left: calc(var(--cx) - 5px); top: calc(var(--y) - 5px); width: 10px; height: 10px; border-radius: 50%; background: var(--ak-c); box-shadow: 0 0 0 2px var(--c-surface); }
+      .ak-col:is(:hover, .is-pointed)::before { content: ''; position: absolute; left: var(--cx); top: 0; bottom: 0; width: 1px; background: var(--c-ink-3); }
+      .ak-col:is(:hover, .is-pointed)::after { content: ''; position: absolute; left: calc(var(--cx) - 5px); top: calc(var(--y) - 5px); width: 10px; height: 10px; border-radius: 50%; background: var(--ak-c); box-shadow: 0 0 0 2px var(--c-surface); }
       .ak-tip { display: none; position: absolute; top: 0; left: calc(var(--cx) + 8px); height: 24px; padding: 0 8px; align-items: center; white-space: nowrap; border-radius: var(--r-8); background: var(--c-surface); box-shadow: 0 0 0 1px var(--c-line), 0 4px 12px -4px rgba(0, 0, 0, .16); }
       .ak-col.is-r .ak-tip { left: auto; right: calc(100% - var(--cx) + 8px); }
-      .ak-col:hover .ak-tip { display: flex; }
+      .ak-col:is(:hover, .is-pointed) .ak-tip { display: flex; }
 
       /* Kennzahlen: Kurs, Spannen als Balken, sechs Werte in drei Spalten */
       .ak-z { display: flex; flex-direction: column; gap: 16px; height: 100%; }
@@ -187,6 +222,47 @@
       .ak-span { display: grid; grid-template-columns: 64px auto minmax(0, 1fr) auto; align-items: center; column-gap: 8px; height: 24px; }
       .ak-facts { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
       .ak-fact { min-width: 0; padding-top: 8px; border-top: 1px solid var(--c-line); }
+
+      /* Listenzeile: Name und Kürzel, kleiner Verlauf, Kurs und Tagesveränderung rechtsbündig */
+      .ak-zl { display: grid; grid-template-columns: minmax(0, 1fr) 64px 88px; gap: 16px; align-items: center; height: 32px; }
+      .ak-zl > [data-area="media:verlauf"] { height: 32px; }
+      .ak-quote { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+      .ak-zl.is-msg { grid-template-columns: minmax(0, 1fr) auto; }
+      .ak-zl .ak-acts .btn-pill { width: 100%; justify-content: center; white-space: nowrap; }
+
+      /* Teaser: randabfallendes Bild, Dachzeile mit Kurs, Überschrift, Unterzeile */
+      .ak-t { display: grid; grid-template-rows: 192px 24px 128px; height: 100%; }
+      .ak-t .ak-img { grid-row: 1; }
+      .ak-t :is(.ak-copy, .ak-msg) { grid-row: 3; margin: 0 24px; display: flex; flex-direction: column; min-width: 0; }
+      .ak-t .ak-copy { gap: 8px; }
+      .ak-t .ak-msg { gap: 16px; }
+      .ak-kick > * { min-width: 0; }
+      .ak-kick > :not(:first-child) { flex: none; }
+      .ak-two { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+      /* Zustände: Skelett, Kachel statt Bild, eine Handlung */
+      .ak-sk { display: flex; align-items: center; }
+      .ak-sk::before { content: ''; width: var(--w, 100%); height: var(--b, 8px); border-radius: 999px; background: var(--c-fill); }
+      .ak-foot > .ak-sk:nth-child(2) { justify-content: center; }
+      .ak-foot > .ak-sk:last-child { justify-content: flex-end; }
+      .ak-bone { display: block; border-radius: var(--r-8); background: var(--c-fill); }
+      .ak-range .ak-bone { height: 32px; border-radius: var(--r-pill); }
+      .ak-tile { display: grid; place-items: center; background: var(--c-fill); color: var(--c-ink-3); }
+      .ak-tile.is-error { background: var(--c-warm-soft); color: var(--c-warm); }
+      .ak-badge { width: 48px; height: 48px; border-radius: var(--r-pill); flex: none; }
+      .ak-none { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+      .ak-none > .stack { max-width: 100%; }
+      .ak-acts { display: flex; }
+      .ak-none .ak-acts { align-self: stretch; justify-content: center; }
+
+      /* Hover: Name als Link, Zeitraum, Fadenkreuz */
+      .ak-link { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+      .ak-zl .ak-link { text-underline-offset: 1px; }
+      &:is(:hover, .is-hover) .ak-link { text-decoration-line: underline; }
+      .btn-pill, .toggle { transition: background-color .15s, box-shadow .15s, color .15s; }
+      &:is(:hover, .is-hover) .btn-pill.solid { box-shadow: 0 0 0 4px var(--c-fill-2); }
+      .toggle:not(.is-on):is(:hover, .is-pointed) { background: var(--c-fill-2); color: var(--c-ink); }
+      .toggle.is-on:is(:hover, .is-pointed) { box-shadow: inset 0 0 0 1px var(--c-accent); }
     `,
     layouts: [
       {
@@ -196,7 +272,21 @@
         idea: 'Der Kurs zuerst: 254,63 Dollar groß, darunter das Tagesplus mit Pfeil und der Monatsverlauf als leise Fläche.',
         height: 296,
         render: (d, h) => {
-          const box = inner(h, 296), X = box.h - 168;
+          const box = inner(h, 296), X = box.h - 168, m = MSG[h.state];
+          if (m) return `
+          <div class="ak-k">
+            ${msgHead(d, h, m)}
+            ${note(h, m, box.h - 40)}
+          </div>`;
+          if (h.state === 'loading') return `
+          <div class="ak-k">
+            ${head(d, h)}
+            <div class="ak-hero" data-area="text:kurs">${sk(56, '152px', 32)}${sk(24, '176px')}</div>
+            <div class="ak-plotbox">
+              <div class="ak-bone" style="height:${X}px" data-area="media:verlauf"></div>
+              <div class="ak-foot" data-area="meta:zeitraum">${sk(16, '40px')}${sk(16, '96px')}${sk(16, '40px')}</div>
+            </div>
+          </div>`;
           const chg = d.price - d.prev, s = d.series;
           const ok = s.length > 1, pp = ok ? pct(s[s.length - 1].v, s[0].v) : 0;
           return `
@@ -231,17 +321,31 @@
         idea: 'Der Verlauf zuerst: ein großer Monatschart mit Raster und Schlusskurs am Linienende, darüber der Zeitraum; beim Überfahren zeigt ein Fadenkreuz jeden Handelstag.',
         height: 304,
         render: (d, h) => {
-          const box = inner(h, 304), X = box.h - 88, s = d.series;
+          const box = inner(h, 304), X = box.h - 88, s = d.series, m = MSG[h.state];
+          const code = `<p class="t-12 ink-2 clip">${h.esc(d.code)}</p>`;
+          if (m) return `
+          <div class="ak-v">
+            ${msgHead(d, h, m, code)}
+            ${note(h, m, box.h - 40)}
+          </div>`;
+          if (h.state === 'loading') return `
+          <div class="ak-v">
+            ${head(d, h, sk(16, '96px'))}
+            <div class="ak-range" data-area="control:zeitraum">${'<span class="ak-bone"></span>'.repeat(RANGES.length)}</div>
+            <div class="ak-bone" style="height:${X}px" data-area="media:verlauf"></div>
+          </div>`;
           const ok = s.length > 1, pp = ok ? pct(s[s.length - 1].v, s[0].v) : 0;
+          // Hover: der nächste Zeitraum und ein Handelstag in der Mitte zeigen, was sich bedienen lässt
+          const hov = h.state === 'hover', next = RANGES[(RANGES.findIndex(r => r[0] === d.range) + 1) % RANGES.length][0];
           return `
           <div class="ak-v">
-            ${head(d, h, ok ? `<div class="row g-8"><p class="t-12 ink-2">${rangeName(d)}</p>${delta(h, pp, `${signed(pp)}&nbsp;%`)}</div>` : `<p class="t-12 ink-2 clip">${h.esc(d.code)}</p>`)}
+            ${head(d, h, ok ? `<div class="row g-8"><p class="t-12 ink-2">${rangeName(d)}</p>${delta(h, pp, `${signed(pp)}&nbsp;%`)}</div>` : code)}
             <div class="ak-range" data-area="control:zeitraum">
-              ${RANGES.map(([k, name]) => `<button class="toggle t-14${k === d.range ? ' is-on' : ''}" aria-pressed="${k === d.range}" aria-label="${name}">${k}</button>`).join('')}
+              ${RANGES.map(([k, name]) => `<button class="toggle t-14${k === d.range ? ' is-on' : ''}${hov && k === next ? ' is-pointed' : ''}" aria-pressed="${k === d.range}" aria-label="${name}">${k}</button>`).join('')}
             </div>
             ${ok ? `
             <div class="ak-plot ${dir(pp)}" data-area="media:verlauf" role="img" aria-label="Kursverlauf ${rangeName(d)}: von ${num(s[0].v)} auf ${num(s[s.length - 1].v)} ${h.esc(d.unit)}">
-              ${chart(s, box.w, X, h)}
+              ${chart(s, box.w, X, h, hov ? Math.floor((s.length - 1) / 2) : -1)}
             </div>` : empty(X, 'Noch kein Kursverlauf')}
           </div>`;
         },
@@ -253,6 +357,12 @@
         idea: 'Die Einordnung zuerst: wo der Kurs in der Tages- und Jahresspanne steht, darunter sechs Kennzahlen zum Nachschlagen.',
         height: 320,
         render: (d, h) => {
+          const m = MSG[h.state], load = h.state === 'loading';
+          if (m) return `
+          <div class="ak-z">
+            ${msgHead(d, h, m)}
+            ${note(h, m, inner(h, 320).h - 40)}
+          </div>`;
           const chg = d.price - d.prev;
           const facts = [
             ['Eröffnung', num(d.open)], ['Vortag', num(d.prev)], ['Volumen', h.esc(d.volume)],
@@ -262,22 +372,97 @@
           <div class="ak-z">
             ${head(d, h)}
             <div class="ak-row" data-area="text:kurs">
+              ${load ? sk(40, '136px', 24) + sk(24, '72px') : `
               <div class="ak-price">
                 <p class="t-32 w-500">${num(d.price)}</p>
                 <p class="t-16 ink-2">${h.esc(d.unit)}</p>
               </div>
-              ${delta(h, chg, `${signed(pct(d.price, d.prev))}&nbsp;%`)}
+              ${delta(h, chg, `${signed(pct(d.price, d.prev))}&nbsp;%`)}`}
             </div>
             <div class="ak-spans" data-area="meta:spannen">
-              ${span('Tag', d.low, d.high, d.price)}
-              ${span('52 Wochen', d.lo52, d.hi52, d.price)}
+              ${span('Tag', d.low, d.high, d.price, load)}
+              ${span('52 Wochen', d.lo52, d.hi52, d.price, load)}
             </div>
             <div class="ak-facts" data-area="text:kennzahlen">
               ${facts.map(([k, v]) => `
                 <div class="ak-fact">
                   <p class="t-12 ink-2 clip">${k}</p>
-                  <p class="t-16 w-500 clip">${v}</p>
+                  ${load ? sk(24, '56%') : `<p class="t-16 w-500 clip">${v}</p>`}
                 </div>`).join('')}
+            </div>
+          </div>`;
+        },
+      },
+      {
+        id: 'zeile',
+        name: 'Zeile',
+        family: 'listenzeile',
+        idea: 'Die Aktie als Zeile in einer Kursliste: Name und Kürzel links, der Monatsverlauf klein in der Mitte, rechts Kurs und Tagesveränderung.',
+        height: 80,
+        render: (d, h) => {
+          const m = MSG[h.state], load = h.state === 'loading';
+          if (m) return `
+          <div class="ak-zl is-msg">
+            <div class="stack" data-area="text:aktie">
+              <p class="t-14 tight w-500 clip">${m.line[0]}</p>
+              <p class="t-12 ink-2 clip">${m.line[1]}</p>
+            </div>
+            <div class="ak-acts" data-area="control:aktion" style="width:${m.w}px"><button class="btn-pill solid t-12 w-500">${m.action}</button></div>
+          </div>`;
+          const chg = d.price - d.prev, s = d.series;
+          const ok = s.length > 1, pp = ok ? pct(s[s.length - 1].v, s[0].v) : 0;
+          return `
+          <div class="ak-zl">
+            <div class="stack" data-area="text:aktie">
+              ${load ? sk(16, '56%') + sk(16, '80%') : `
+              <p class="t-14 tight w-500 clip ak-link">${h.esc(d.name)}</p>
+              <p class="t-12 ink-2 clip">${h.esc(d.code)} · ${h.esc(d.exchange)}</p>`}
+            </div>
+            ${load || !ok ? '<div class="ak-bone" data-area="media:verlauf"></div>' : `
+            <div class="${dir(pp)}" data-area="media:verlauf" role="img" aria-label="Kursverlauf ${rangeName(d)}: ${signed(pp)} %">${spark(s, 64, 32)}</div>`}
+            <div class="ak-quote" data-area="text:kurs">
+              ${load ? sk(16, '56px') + sk(16, '72px') : `
+              <p class="t-14 tight w-500 num">${num(d.price)}</p>
+              ${delta(h, chg, `${signed(pct(d.price, d.prev))}&nbsp;%`, 't-12 w-500')}`}
+            </div>
+          </div>`;
+        },
+      },
+      {
+        id: 'teaser',
+        name: 'Teaser',
+        family: 'teaser',
+        idea: 'Der Anreißer zuerst: randabfallendes Bild, darunter Aktie, Kurs und Tagesplus als Dachzeile, dann Überschrift und Unterzeile.',
+        height: 368,
+        padding: 0,
+        render: (d, h) => {
+          const m = MSG[h.state], load = h.state === 'loading', chg = d.price - d.prev;
+          if (m) return `
+          <div class="ak-t">
+            ${tile(h, m, 'ak-img', 'media:bild', { size: 32, bleed: true })}
+            <div class="ak-msg">
+              <div class="stack g-8" data-area="text:anreisser">
+                <p class="t-12 ink-2 clip">${m.error ? `${h.esc(d.name)} · ${h.esc(d.code)}` : m.head}</p>
+                <div class="stack">
+                  <p class="t-20 w-500 clip" data-role="Überschrift">${m.title}</p>
+                  <p class="t-14 ink-2 clip">${m.text}</p>
+                </div>
+              </div>
+              ${act(h, m)}
+            </div>
+          </div>`;
+          return `
+          <div class="ak-t">
+            ${load ? tile(h, null, 'ak-img', 'media:bild', { bleed: true }) : h.media(0, { class: 'ak-img', area: 'media:bild', bleed: true })}
+            <div class="ak-copy" data-area="text:anreisser">
+              ${load ? `${sk(16, '48%')}<span class="stack">${sk(24, '100%')}${sk(24, '64%')}</span><span class="stack">${sk(24, '100%')}${sk(24, '80%')}</span>` : `
+              <div class="row g-8 ak-kick">
+                <p class="t-12 w-500 clip">${h.esc(d.name)} · ${h.esc(d.code)}</p>
+                <p class="t-12 ink-2 num">${num(d.price)} ${h.esc(d.unit)}</p>
+                ${delta(h, chg, `${signed(pct(d.price, d.prev))}&nbsp;%`, 't-12 w-500')}
+              </div>
+              <p class="t-20 w-500 ak-two ak-link" data-role="Überschrift">${h.esc(d.headline)}</p>
+              <p class="t-14 ink-2 ak-two">${h.esc(d.teaser)}</p>`}
             </div>
           </div>`;
         },
