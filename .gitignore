@@ -6,3 +6,6 @@ media/_media.js
 # Lizenzschriften eines Regelwerks – nur lokal, nie ins öffentliche Repository
 systems/*/fonts
 export/
+
+# Korpus aus WebUI: Nutzungsbedingungen des Datensatzes (COPYRIGHT.txt) – nicht ins Repository
+korpus/

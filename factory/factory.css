@@ -614,6 +614,51 @@ button.cf-badge.warn:hover { background: #f7e4c2; }
 .rs-pref .is-bad, .rs-prefnotes .is-bad { color: var(--bad); }
 .rs-prefnotes { list-style: none; margin: 12px 0 0; padding: 0; font-size: 12px; line-height: 20px; color: var(--ink-2); }
 
+/* Skelette: Varianten als Flächenplan */
+.cf-skelwall { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.cf-skel-item { margin: 0; display: flex; flex-direction: column; gap: 8px; width: min-content; }
+.cf-skel-item figcaption { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.cf-skel-item figcaption b { font-weight: 500; color: var(--ink); }
+.cf-skel-item figcaption label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.cf-skel-item figcaption input { margin: 0; accent-color: var(--ink); }
+.cf-skel-item .cf-varchip { align-self: flex-start; margin: 4px 0 0; }
+.cf-skel-item:has(input:checked) .cf-skel-fig { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 14px; }
+.cf-skel-tags { font: 400 11px/16px var(--mono); color: var(--ink-3); }
+.cf-skel-bad { font-size: 11px; color: var(--bad); }
+.cf-skel { background: #fff; }
+.cf-skel-cols { position: absolute; inset: 0; }
+.cf-skel-cols > i { position: absolute; top: 0; bottom: 0; background: rgba(251, 220, 238, .45); }
+.cf-skel-inset { position: absolute; border: 1px dashed var(--edge); }
+.cf-sk { position: absolute; border: 1px solid; border-radius: 4px; }
+.cf-sk.role-media { background: var(--a-media); border-color: var(--a-media-b); }
+.cf-sk.role-text { background: var(--a-text); border-color: var(--a-text-b); }
+.cf-sk.role-control { background: var(--a-control); border-color: var(--a-control-b); }
+.cf-sk.role-meta { background: var(--a-meta); border-color: var(--a-meta-b); }
+.cf-sk.on-media { background: rgba(255, 255, 255, .7); }
+.cf-sk > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cf-sk > svg path { stroke: var(--a-media-b); stroke-width: 1; vector-effect: non-scaling-stroke; fill: none; }
+.cf-sk > em { position: absolute; left: 4px; top: 3px; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 10px/14px var(--mono); font-style: normal; color: var(--ink-2); }
+.cf-sk.role-media > em { padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, .85); }
+.cf-skel.is-overlay .cf-skel-ghost { position: absolute; inset: 0; opacity: var(--o); }
+.cf-skel.is-overlay .cf-skel-ghost:not(:first-child) .cf-skel-cols, .cf-skel.is-overlay .cf-skel-ghost:not(:first-child) .cf-skel-inset { display: none; }
+.cf-skel.is-overlay .cf-sk { background: none; }
+.cf-skelsolo { margin-top: 24px; }
+.cf-skel-st { font-size: 11px; line-height: 16px; }
+.cf-skel-st.is-ok { color: var(--ok); }
+.cf-skel-st.is-warn { color: #8a5a12; }
+.cf-skel-st.is-bad { color: var(--bad); }
+.cf-skel-acts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.cf-skel-acts .cf-varchip { margin: 0; }
+.cf-skel-item.is-rej .cf-skel-fig { opacity: .6; }
+.cf-skel-rej { margin-top: 24px; }
+.cf-skel-rej summary { cursor: pointer; font-size: 12px; color: var(--ink-2); margin-bottom: 16px; }
+.cf-duel { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: #f4f4f2; }
+.cf-duel-pair { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.cf-duel-side { padding: 8px; border: 0; border-radius: 16px; background: none; cursor: pointer; }
+.cf-duel-side:hover, .cf-duel-side:focus-visible { background: #e9e9e6; outline: none; }
+.cf-duel-side .rs-mini { pointer-events: none; }
+.cf-duel .cf-varrow > input { flex: 1; min-width: 220px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: #fff; font: 12px/1 var(--ui); }
+
 /* Familie, Zustände, Breiten */
 .cf-famchip { margin-left: 4px; padding: 0 8px; border-radius: 999px; background: rgba(225, 140, 210, .16); color: #a3478f; font: 500 11px/20px var(--ui); font-style: normal; white-space: nowrap; }
 .cf-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }

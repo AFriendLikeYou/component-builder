@@ -81,6 +81,17 @@
       .mu-t .mu-msg { grid-row: 3; margin: 0 24px; display: flex; flex-direction: column; gap: 16px; }
       .mu-head { text-decoration-thickness: 2px; text-underline-offset: 4px; }
 
+      /* Bühne: Cover füllt die Karte, Titel, Abspielen und Fortschritt liegen unten darauf */
+      .mu-s { display: grid; height: 100%; }
+      .mu-s > * { grid-area: 1 / 1; position: relative; }
+      .mu-s .mu-hero { width: 100%; height: 100%; }
+      .mu-s .mu-scrim { align-self: end; height: 160px; background: linear-gradient(to top, color-mix(in srgb, var(--c-dark) 72%, transparent), transparent); }
+      .mu-s .mu-on { align-self: end; margin: 0 24px 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+      .mu-s .mu-on.is-dark { color: var(--c-on-dark); }
+      .mu-s .mu-on.is-dark .ink-2 { color: var(--c-on-dark-2); }
+      .mu-s .mu-row { display: flex; align-items: center; gap: 16px; height: 48px; }
+      .mu-s .mu-dot { width: 48px; height: 48px; }
+
       /* Zustände: Skelett, Kacheln statt Bild, eine Handlung */
       .mu-sk { display: flex; align-items: center; }
       .mu-sk::before { content: ''; width: var(--w, 100%); height: 8px; border-radius: 999px; background: var(--c-fill); }
@@ -175,6 +186,51 @@
                 </div>
               </div>
               <div class="mu-bar" data-area="meta:fortschritt">${track(load ? null : d.progress)}</div>
+            </div>`;
+        },
+      },
+      {
+        id: 'cover-buehne',
+        name: 'Cover · Bühne',
+        family: 'karte',
+        variantOf: 'cover',
+        direction: 'bildstaerker',
+        idea: 'Das Cover füllt die ganze Karte, Titel, Abspielen und Fortschritt liegen unten auf einem dunklen Verlauf. So wirkt das Album wie ein Plattencover, und die Karte ist 144 px niedriger als „Cover“.',
+        height: 264,
+        padding: 0,
+        render: (d, h) => {
+          const m = MSG[h.state], load = h.state === 'loading';
+          if (m) return `
+            <div class="mu-s">
+              <div class="mu-hero mu-tile${m.error ? ' is-error' : ''}" data-bleed data-area="media:cover"></div>
+              <div class="mu-on">
+                <div class="row g-16" data-area="text:titel">
+                  ${h.icon(m.icon, 24)}
+                  <div class="stack grow">
+                    <p class="t-16 w-500 clip">${m.title}</p>
+                    <p class="t-14 ink-2 clip">${m.text}</p>
+                  </div>
+                </div>
+                ${act(h, m)}
+              </div>
+            </div>`;
+          return `
+            <div class="mu-s">
+              ${load ? tile(h, null, 'mu-hero', 'media:cover', { bleed: true }) : h.media(0, { class: 'mu-hero', area: 'media:cover', bleed: true })}
+              ${load ? '' : '<span class="mu-scrim"></span>'}
+              <div class="mu-on${load ? '' : ' is-dark'}">
+                <div class="mu-row">
+                  <div class="stack grow" data-area="text:titel">
+                    ${load ? sk(24, '56%') + sk(24, '32%') : `
+                    <p class="t-16 w-500 clip">${h.esc(d.title)}</p>
+                    <p class="t-14 ink-2 clip">${h.esc(d.artist)}</p>`}
+                  </div>
+                  <div data-area="control:abspielen">
+                    ${load ? '<span class="mu-dot"></span>' : `<button class="btn-round lg float" aria-label="Pause">${h.icon('pause', 20)}</button>`}
+                  </div>
+                </div>
+                <div class="mu-bar" data-area="meta:fortschritt"><div class="progress${load ? '' : ' on-media'} mu-track" style="--p: ${load ? 0 : d.progress}"><i></i></div></div>
+              </div>
             </div>`;
         },
       },

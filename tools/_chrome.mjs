@@ -14,6 +14,7 @@ const CANDIDATES = [
   '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
   '/usr/bin/google-chrome',
   '/usr/bin/chromium',
+  '/opt/pw-browsers/chromium',
 ].filter(Boolean);
 
 export function chromePath() {
@@ -34,7 +35,8 @@ export async function withPage(url, fn, { width = 1600, height = 1000, scale = 1
   const profile = mkdtempSync(path.join(tmpdir(), 'cf-chrome-'));
   const proc = spawn(chromePath(), [
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--no-default-browser-check',
-    '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
+    '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+    ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []), 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   let ws;
   try {

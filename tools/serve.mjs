@@ -305,6 +305,22 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/vergleich' && req.method === 'POST') {
+    readBody(req).then(b => {
+      const plan = p => p && typeof p.id === 'string' ? { id: p.id.slice(0, 120), name: String(p.name || '').slice(0, 120), dir: p.dir ? String(p.dir).slice(0, 40) : null, h: +p.h || null, focus: p.focus ? String(p.focus).slice(0, 40) : null } : null;
+      if (!b || !validId(b.c) || typeof b.l !== 'string' || !plan(b.a) || !plan(b.b) || !['a', 'b', 'gleich'].includes(b.winner)) return sendJSON(res, 400, { ok: false });
+      const file = path.join(ROOT, 'feedback', 'vergleiche.js');
+      const src = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      let list = [];
+      try { const m = src.match(/window\.CF_VERGLEICHE = (\[[\s\S]*\]);/); if (m) list = JSON.parse(m[1]); } catch {}
+      list.push({ when: new Date().toISOString().slice(0, 10), system: String(b.system || '').slice(0, 20), c: b.c, l: b.l.slice(0, 60), a: plan(b.a), b: plan(b.b), winner: b.winner, comment: String(b.comment || '').slice(0, 300) });
+      const head = (src.match(/^(\/\/.*\n)+/) || [''])[0];
+      fs.writeFileSync(file, `${head}window.CF_VERGLEICHE = ${JSON.stringify(list, null, 2)};\n`);
+      history.schedule(`Vergleich: ${b.c}/${b.l}`);
+      sendJSON(res, 200, { ok: true });
+    });
+    return;
+  }
   if (url.pathname === '/api/leitsatz' && req.method === 'POST') {
     readBody(req).then(b => {
       if (busy()) return sendJSON(res, 409, { ok: false, error: 'Claude arbeitet gerade – gleich noch einmal.' });
