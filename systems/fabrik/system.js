@@ -14,6 +14,9 @@ window.SYSTEM = {
   spacing: [8, 16, 24, 32, 40, 48], // Abstände (gap, Innenabstand)
   minTarget: 32,     // Mindestgröße für Bedienelemente in px
   widths: [320, 352, 432], // Breakpoints: Kartenbreiten, in denen die Layouts geprüft werden
+  // Komposition (R13–R15): Blickfang ab Faktor focusRatio zur nächsten Schriftgröße oder focusShare der Kartenfläche,
+  // höchstens maxEdges linke Kanten für übereinanderliegende Flächen
+  composition: { focusRatio: 1.4, focusShare: 0.2, maxEdges: 2 },
 
   families: {       // erlaubte Familien und wofür sie da sind
     'Inter': 'Oberfläche',
@@ -104,6 +107,18 @@ window.SYSTEM = {
     {
       id: 'R12', title: 'Bausteine statt Eigenbau', checks: ['atoms'], level: 'soll', fig: 'atoms',
       text: 'Buttons, Umschalter, Abhaken, Chips und Fortschrittsbalken kommen aus den Bausteinen dieses Regelwerks (`atoms` in `system.js`, CSS in `system.css`), Icons nur über `h.icon`. Farbe und Abstand darf eine Komponente anpassen, Form und Höhe nicht. Fehlt ein Baustein, wird er dort aufgenommen statt in der Komponente nachgebaut.',
+    },
+    {
+      id: 'R13', title: 'Ein Blickfang', checks: ['focus'], level: 'soll',
+      text: 'Jedes Layout hat genau eine Sache, die zuerst auffällt: die größte Schrift mindestens {composition.focusRatio}× so groß wie die nächste, ein Bild oder eine Grafik mit einem Flächenanteil ab {composition.focusShare}, eine einzelne gefüllte Hauptaktion – oder die Liste selbst. Zwei gleich große Bilder konkurrieren.',
+    },
+    {
+      id: 'R14', title: 'Fluchtlinien', checks: ['edges'], level: 'soll',
+      text: 'Übereinanderliegende Flächen beginnen an höchstens {composition.maxEdges} linken Kanten. Nebeneinander (Cover neben Titel, Spalten) zählt nicht, randabfallende Medien auch nicht.',
+    },
+    {
+      id: 'R15', title: 'Nähe', checks: ['proximity'], level: 'soll',
+      text: 'Was zusammengehört, steht enger als das, was getrennt ist: Die größte Lücke innerhalb einer Fläche ist kleiner als ihr Abstand zur Nachbarfläche darüber oder darunter.',
     },
   ],
 };

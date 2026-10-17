@@ -10,7 +10,13 @@ So ist das System entstanden: Etwas wirkt falsch, man findet heraus, warum, und 
 2. Wenn messbar: Prüfung in `measure()` in `factory/factory.js` ergänzen (`V('kürzel', 'Meldung')`) und das Kürzel in `checks` der Regel eintragen.
 3. `node tools/check.mjs` über alle Komponenten laufen lassen und Verstöße beheben.
 
-Vorhandene Kürzel: `grid card spacing inset height overflow clip error areas role radius family families sizes weights scale leading headline color accent dark target lock consistency atoms`.
+Vorhandene Kürzel: `grid card spacing inset height overflow clip error areas role radius family families sizes weights scale leading headline color accent dark target lock consistency atoms focus edges proximity`.
+
+`focus`, `edges`, `proximity` (R13–R15) messen die Komposition: Blickfang (Schriftsprung, Bildanteil, eine gefüllte Hauptaktion oder eine Liste/Reihe), linke Kanten übereinanderliegender Flächen, größte Lücke in einer Fläche gegen den Abstand zur Nachbarfläche. Die Werte stehen unter `composition` im Regelwerk.
+
+## Skelette (Varianten-Wand)
+
+`node tools/variants.mjs <id> <layout> [--n=12]` leitet aus dem Layout ein Skelett ab (oberste Flächen; was nebeneinandersteht, bleibt eine Zeile), ordnet es nach Mustern neu an (Aktion/Wert zuerst, Bild oben/unten/seitlich, randabfallend, Bühne, zentriert, zwei Spalten; je dicht und luftig), verwirft ungültige Pläne und solche, die sich zu weniger als 30 % vom Ausgang oder einem gewählten Plan unterscheiden (IoU gleichnamiger Flächen), und schreibt `shots/<id>-skelette.jpg`. `--prompt=<nr>` gibt die Bauanweisung, `--json` die Pläne. Die Muster stehen in `skeletonCandidates()` in `factory/factory.js`; Texthöhen in neuer Breite sind geschätzt (≈).
 
 ## Feinschliff in den Code einarbeiten
 

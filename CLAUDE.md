@@ -71,7 +71,7 @@ Aufträge aus dem Bearbeiten-Modus (Auto-Layout) sind verbindlich: Reihenfolge, 
 
 ## Varianten, Präferenzen, Leitsätze
 
-Varianten sind **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert, `idea` erklärt in zwei Sätzen, was sich ändert und warum. `feedback/praeferenzen.js` sammelt behaltene und verworfene Varianten mit Kommentar – richte dich danach. `feedback/leitsaetze.js`: `bestaetigt` gilt wie eine Soll-Regel (auch gegen die Beschreibung einer Richtung), `vorschlag` nur als Hinweis, `verworfen` gar nicht. Neue Leitsätze nur auf Auftrag ableiten, den Status nie selbst ändern.
+Varianten sind **neue Layouts** mit `variantOf` (id des Ausgangslayouts) und `direction` (kompakter, editorialer, hierarchischer, mobil, ruhiger, bildstaerker); das Ausgangslayout bleibt unverändert, `idea` erklärt in zwei Sätzen, was sich ändert und warum. Ohne festen Plan erst die Wand ansehen: `node tools/variants.mjs <id> <layout>` legt Skelette (Flächenpläne auf 4 Spalten, schon gegen Raster, Inset, R13, R14 geprüft und nach Unterschied sortiert) als Bild ab; `--prompt=<nr>` gibt die Bauanweisung für ein Skelett. `feedback/praeferenzen.js` sammelt behaltene und verworfene Varianten mit Kommentar – richte dich danach. `feedback/leitsaetze.js`: `bestaetigt` gilt wie eine Soll-Regel (auch gegen die Beschreibung einer Richtung), `vorschlag` nur als Hinweis, `verworfen` gar nicht. Neue Leitsätze nur auf Auftrag ableiten, den Status nie selbst ändern.
 
 ## Sonst
 

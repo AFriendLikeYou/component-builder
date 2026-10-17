@@ -399,7 +399,10 @@ function measure(c, l, host) {
     if (el.parentElement.closest(CONTROL)) return;
     const r = rel(el.getBoundingClientRect());
     if (r.w < 1) return;
-    bp.controls.push({ ...r, r: Math.min(radiusPx(el, r.w, r.h), r.w / 2, r.h / 2) });
+    // gefüllt = deckende Fläche, die sich deutlich von der Karte abhebt (zählt für R13 als Blickfang)
+    const bg = parseColor(getComputedStyle(el).backgroundColor), cbg = parseColor(getComputedStyle(card).backgroundColor);
+    const filled = !!bg && bg.a > .5 && (!cbg || bg.rgb.reduce((s, v, i) => s + Math.abs(v - cbg.rgb[i]), 0) > 120);
+    bp.controls.push({ ...r, r: Math.min(radiusPx(el, r.w, r.h), r.w / 2, r.h / 2), filled });
     const min = S.minTarget || 0;
     if (min && (r.w < min - .5 || r.h < min - .5)) {
       const label = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24) || el.tagName.toLowerCase();
@@ -634,6 +637,7 @@ function measure(c, l, host) {
   badLh.forEach((t, lh) => V('leading', `Zeilenhöhe ${lh == null ? 'normal' : lh + ' px'} bei „${t.text.slice(0, 28)}“ (${S.lineHeightRatios ? `Faktor ${S.lineHeightRatios.join(' · ')} der Größe` : `Vielfache von ${S.lineHeightStep}`})`));
   // Überschriften-Schrift nur für Überschriften
   if (S.headline) T.filter(t => t.family === S.headline.family && t.size < S.headline.min).forEach(t => V('headline', `„${t.text.slice(0, 24)}“ in ${t.family} ${t.size} px – diese Schrift erst ab ${S.headline.min} px (Überschriften)`));
+  composition(bp, V, l);
 
   for (const [name, r] of Object.entries(F.tw[c.id]?.[l.id]?.locks || {})) {
     const a = bp.areas.find(x => x.name === name);
@@ -646,6 +650,52 @@ function measure(c, l, host) {
   bp.findings = bp.violations.filter(v => active.has(v.rule));
   classify(bp);
   return bp;
+}
+
+// Komposition (R13–R15): Blickfang, Fluchtlinien, Nähe. Werte unter `composition` im Regelwerk.
+const compVals = () => ({ focusRatio: 1.4, focusShare: .2, maxEdges: 2, ...(S.composition || {}) });
+const insideRect = (a, b) => a !== b && a.x >= b.x - .5 && a.y >= b.y - .5 && a.x + a.w <= b.x + b.w + .5 && a.y + a.h <= b.y + b.h + .5;
+const parentArea = (a, all) => all.filter(b => insideRect(a, b)).sort((p, q) => p.w * p.h - q.w * q.h)[0] || null;
+const overlapX = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+const overlapY = (a, b) => Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+function composition(bp, V, l) {
+  const C = compVals(), A = bp.w * bp.h, pct = v => Math.round(v * 100);
+  // R13 Ein Blickfang: eine Sache ist deutlich größer – Schrift, Bild/Grafik, gefüllte Hauptaktion – oder die Liste selbst führt
+  const sz = bp.type.sizes, ratio = sz.length > 1 ? sz[0] / sz[1] : 1;
+  const pics = [...bp.media, ...bp.graphics].map(m => m.w * m.h / A).sort((a, b) => b - a);
+  const filled = bp.controls.filter(k => k.filled);
+  // Liste oder Reihe: ein Textstil an mindestens drei Stellen untereinander oder nebeneinander, oder drei gleich große Bilder/Grafiken
+  const spots = (xs, k) => new Set(xs.map(t => Math.round(t[k]))).size;
+  const same = s => bp.texts.filter(t => t.size === s.size && t.weight === s.weight && t.family === s.family).map(t => t.lines[0]);
+  const gallery = [...bp.media, ...bp.graphics].filter((m, _, all) => all.filter(n => Math.abs(n.w - m.w) < 2 && Math.abs(n.h - m.h) < 2).length >= 3);
+  const list = gallery.length >= 3 || bp.type.styles.some(s => s.count >= 3 && Math.max(spots(same(s), 'y'), spots(same(s), 'x')) >= 3);
+  const row = l.family === 'listenzeile' || bp.h <= 120;
+  bp.focus = ratio >= C.focusRatio ? 'Schrift' : (pics[0] || 0) >= C.focusShare ? 'Bild' : filled.length === 1 ? 'Aktion' : list ? 'Liste' : row ? 'Zeile' : null;
+  if (!bp.focus) V('focus', `Kein Blickfang: größte Schrift ${sz[0] || '–'} px ist nur ${r1(ratio)}× die nächste, kein Bild ab ${pct(C.focusShare)} % der Karte, keine einzelne gefüllte Aktion – eine Sache deutlich größer machen`);
+  else if (pics.length > 1 && pics[1] >= C.focusShare && pics[1] >= pics[0] * .8) V('focus', `Zwei gleich starke Bilder (${pct(pics[0])} % und ${pct(pics[1])} % der Karte) konkurrieren – eines führt, das andere tritt zurück`);
+
+  // R14 Fluchtlinien: übereinander gestapelte Flächen teilen sich ihre linke Kante
+  const top = bp.areas.filter(a => !parentArea(a, bp.areas));
+  const stacked = top.filter(a => !a.bleed && !top.some(b => b !== a && overlapY(a, b) > .5));
+  const xs = [...new Set(stacked.map(a => a.x))].sort((a, b) => a - b);
+  if (xs.length > C.maxEdges) V('edges', `Übereinanderliegende Flächen beginnen an ${xs.length} Kanten (x = ${xs.join(', ')}) – höchstens ${C.maxEdges}, sonst wirkt die Karte unruhig`);
+
+  // R15 Nähe: die größte Lücke innerhalb einer Fläche ist kleiner als der Abstand zur Nachbarfläche
+  const leaves = bp.areas.filter(a => !bp.areas.some(b => insideRect(b, a)));
+  for (const a of leaves) {
+    const items = [
+      ...bp.texts.filter(t => !t.svg && t.area === a.name).flatMap(t => t.lines.map(ln => { const lh = Math.max(t.lh || ln.h, ln.h); return { y: ln.y + ln.h / 2 - lh / 2, h: lh }; })),
+      ...[...bp.media, ...bp.icons, ...bp.controls, ...bp.graphics].filter(m => insideRect(m, a)),
+    ].map(m => [Math.max(m.y, a.y), Math.min(m.y + m.h, a.y + a.h)]).filter(([p, q]) => q > p).sort((p, q) => p[0] - q[0]);
+    let gap = 0, end = items[0]?.[1];
+    for (const [p, q] of items.slice(1)) { if (p - end > gap) gap = p - end; end = Math.max(end, q); }
+    gap = Math.round(gap);
+    if (gap < 8) continue;
+    const pa = parentArea(a, bp.areas);
+    const near = bp.areas.filter(b => b !== a && parentArea(b, bp.areas) === pa && !insideRect(a, b) && !insideRect(b, a) && overlapX(a, b) > .5)
+      .map(b => ({ b, d: Math.round(b.y >= a.y + a.h ? b.y - a.y - a.h : a.y >= b.y + b.h ? a.y - b.y - b.h : -1) })).filter(x => x.d >= 0).sort((p, q) => p.d - q.d)[0];
+    if (near && gap > near.d) V('proximity', `In „${a.name}“ klafft eine Lücke von ${gap} px, zur Nachbarfläche „${near.b.name}“ sind es nur ${near.d} px – Zusammengehöriges enger setzen als Getrenntes`);
+  }
 }
 
 // Befunde einteilen: Muss-Regel → Verstoß, Soll-Regel → Hinweis, bewusst akzeptiert → Ausnahme (mit Grund)
@@ -1443,6 +1493,234 @@ document.addEventListener('click', e => {
   });
 });
 
+/* ---------- Skelette: Varianten erst als Flächenplan, dann als Code ---------- */
+// Ein Skelett = Kartenmaße und die obersten Flächen eines Layouts (Rolle, Lage, Größe). Die Fabrik ordnet sie auf einem
+// 4-Spalten-Raster neu an (Bild oben, seitlich, randabfallend, als Bühne, zentriert …), prüft die Pläne gegen das Raster und
+// R13/R14, verwirft zu ähnliche und zeigt den Rest als Wand. Claude baut aus einem gewählten Skelett die Variante.
+const SKEL_Q = Q.has('skel') ? Q.get('skel') : null; // ?skel=<layout>&n=12 zeigt die Wand direkt (für tools/variants.mjs)
+const SKEL_COLS = 4, SKEL_GUT = 16, SKEL_MAXH = 560;
+const up8 = v => Math.ceil(v / U - .01) * U;
+const rnd8 = v => Math.round(v / U) * U;
+const ROLE_TAG = { media: 'BILD', text: 'TEXT', control: 'AKTION', meta: 'META' };
+function skeletonOf(c, l) {
+  const bp = bpOf(c, l);
+  const top = bp.areas.filter(a => !parentArea(a, bp.areas)).sort((a, b) => a.y - b.y || a.x - b.x);
+  const blocks = top.map(a => {
+    const ts = bp.texts.filter(t => t.lines.some(ln => { const cx = ln.x + ln.w / 2, cy = ln.y + ln.h / 2; return cx >= a.x && cx <= a.x + a.w && cy >= a.y && cy <= a.y + a.h; }));
+    const ks = bp.controls.filter(k => insideRect(k, a));
+    const minW = a.role === 'media' ? 64 : ks.length && a.role === 'control' ? up8(Math.max(...ks.map(k => k.x + k.w)) - Math.min(...ks.map(k => k.x))) : Math.min(a.w, 144);
+    return { name: a.name, role: a.role, x: a.x, y: a.y, w: a.w, h: a.h, bleed: a.bleed, size: Math.max(0, ...ts.map(t => t.size)), minW };
+  });
+  return { id: 'ausgang', name: 'Ausgang', w: bp.w, h: bp.h, pad: l.padding ?? S.inset, blocks, focus0: bp.focus };
+}
+// Höhe einer Fläche in neuer Breite: Bilder fest, Bedienung bleibt, Text wächst ungefähr mit der Zeilenzahl (≈)
+const skelH = (b, w) => b.row ? rowLayout(b, w, 0, 0).h : b.fixedH || (b.role === 'control' || w >= b.w ? b.h : up8(b.h * Math.min(2, b.w / w)));
+// Was im Ausgang nebeneinander steht (Titel neben Abspielen), bleibt eine Zeile: eine Fläche dehnt sich, die anderen behalten ihre Breite
+function rowsOf(list) {
+  const groups = [];
+  for (const b of list) { const g = groups.find(u => u.some(k => overlapY(k, b) > .5)); g ? g.push(b) : groups.push([b]); }
+  return groups.map(kids => {
+    if (kids.length === 1) return kids[0];
+    kids.sort((p, q) => p.x - q.x);
+    const flex = [...kids].sort((p, q) => (q.role === 'text') - (p.role === 'text') || q.w - p.w)[0];
+    const gaps = kids.slice(1).map((k, i) => Math.max(8, rnd8(k.x - kids[i].x - kids[i].w)));
+    const w = kids.reduce((s, k) => s + k.w, 0) + gaps.reduce((s, g) => s + g, 0);
+    return { row: kids, flex, gaps, name: kids.map(k => k.name).join(' + '), role: kids.some(k => k.role === 'control') ? 'control' : flex.role, size: Math.max(...kids.map(k => k.size)), x: kids[0].x, y: Math.min(...kids.map(k => k.y)), w, h: Math.max(...kids.map(k => k.h)), minW: w - flex.w + Math.min(flex.w, 144) };
+  });
+}
+function rowLayout(b, w, x, y) {
+  const fw = w - (b.w - b.flex.w), hs = b.row.map(k => skelH(k, k === b.flex ? fw : k.w)), h = Math.max(...hs);
+  let cx = x;
+  const kids = b.row.map((k, i) => { const kw = k === b.flex ? fw : k.w, o = { name: k.name, role: k.role, x: cx, y: y + rnd8((h - hs[i]) / 2), w: kw, h: hs[i], ...(kw < k.w && k.role === 'text' ? { est: true } : {}) }; cx += kw + (b.gaps[i] || 0); return o; });
+  return { kids, h };
+}
+function skelStack(list, x, w, y, gap, center, cwCenter = rnd8(w * .75)) {
+  const out = [];
+  for (const b of list) {
+    const bw = b.fixedW || (center && b.role !== 'media' ? Math.min(w, Math.max(b.minW, cwCenter)) : w);
+    if (bw < b.minW || bw > w) return null;
+    if (b.row) { const r = rowLayout(b, bw, center ? x + rnd8((w - bw) / 2) : x, y); out.push(...r.kids); y += r.h + gap; continue; }
+    const h = skelH(b, bw);
+    out.push({ name: b.name, role: b.role, x: center ? x + rnd8((w - bw) / 2) : x, y, w: bw, h, ...(bw < b.w && !b.fixedH && b.role === 'text' ? { est: true } : {}) });
+    y += h + gap;
+  }
+  return { out, end: out.length ? y - gap : y };
+}
+function skeletonCandidates(base) {
+  const W = base.w, I = S.inset, cw = W - 2 * I;
+  const span = k => (k >= SKEL_COLS ? cw : rnd8(k * (cw + SKEL_GUT) / SKEL_COLS - SKEL_GUT));
+  const rest = k => cw - SKEL_GUT - span(k);
+  const head = base.blocks.filter(b => b.name === 'text:kopf');
+  const media = base.blocks.filter(b => b.role === 'media').sort((a, b) => b.w * b.h - a.w * a.h);
+  const hero = media[0];
+  // kleines Medium (Symbol, Avatar): nicht aufblasen, nur seitlich oder zentriert in einer Spalte
+  const photo = hero && (hero.w >= 96 || hero.w * hero.h / (base.w * base.h) >= .1);
+  const loose = base.blocks.filter(b => b !== hero && !head.includes(b)), others = rowsOf(loose);
+  const ctlFirst = [...others.filter(b => b.role === 'control'), ...others.filter(b => b.role !== 'control')];
+  const pic = (w, ratio) => ({ ...hero, fixedW: w, fixedH: rnd8(w / ratio) });
+  const out = [];
+  const add = (id, name, blocks, H, pad = I, extra = {}) => { if (blocks) out.push({ id, name, w: W, h: up8(H), pad, blocks, ...extra }); };
+  const stack = (id, name, list, gap, center) => { const r = skelStack(list, I, cw, I, gap, center, span(3)); if (r) add(id, name, r.out, r.end + I, I, gap > 16 || center ? { calm: true } : {}); };
+  // Reihenfolgen: Aktion zuerst, größter Wert zuerst – jeweils dicht (16) und luftig (24)
+  const lead = [...others].sort((p, q) => q.size - p.size)[0];
+  const valueFirst = lead && lead.size >= 20 && others[0] !== lead ? [lead, ...others.filter(b => b !== lead)] : null;
+  const pics = photo ? [pic(cw, 16 / 9)] : hero ? [pic(span(1), 1)] : [];
+  for (const gap of [16, 24]) {
+    const g = gap > 16 ? '-luftig' : '', gn = gap > 16 ? ' · luftig' : '';
+    if (ctlFirst[0] !== others[0]) stack(`aktion-zuerst${g}`, `Aktion zuerst${gn}`, [...head, ...pics, ...ctlFirst], gap);
+    if (valueFirst) stack(`wert-zuerst${g}`, `Wert zuerst${gn}`, [...head, ...valueFirst, ...pics], gap);
+    stack(`zentriert${g}`, `Zentriert${gn}`, [...head, ...(hero ? [pic(span(photo ? 2 : 1), 1)] : []), ...others], gap, true);
+    if (!photo) { stack(`gestapelt${g}`, `Gestapelt${gn}`, [...head, ...others], gap); continue; }
+    for (const [ratio, rn] of [[16 / 9, '16:9'], [3 / 2, '3:2']]) stack(`bild-oben-${rn.replace(':', 'x')}${g}`, `Bild oben ${rn}${gn}`, [...head, pic(cw, ratio), ...others], gap);
+    stack(`bild-unten${g}`, `Bild unten${gn}`, [...head, ...others, pic(cw, 16 / 9)], gap);
+  }
+  if (hero) {
+    // Bild seitlich: Bild über k Spalten, daneben so viel vom Rest, wie in seine Höhe passt, der Rest darunter
+    for (const k of photo ? [1, 2] : [1]) for (const side of ['links', 'rechts']) for (const ratio of k === 1 ? [1] : [1, 4 / 5]) {
+      const m = pic(span(k), ratio), y0 = head.length ? I + skelH(head[0], cw) + 16 : I;
+      const top = head.length ? skelStack(head, I, cw, I, 16).out : [];
+      // neben das Bild passt eine ganze Zeile oft nicht – dann ihre Flächen einzeln verteilen
+      const fits = others[0] && rest(k) >= others[0].minW;
+      const col = [], below = [];
+      let used = 0;
+      for (const b of fits ? others : loose) { const h = skelH(b, rest(k)); if (!below.length && rest(k) >= b.minW && used + h <= m.fixedH) { col.push(b); used += h + 8; } else below.push(b); }
+      const mx = side === 'links' ? I : I + rest(k) + SKEL_GUT, tx = side === 'links' ? I + span(k) + SKEL_GUT : I;
+      const colR = skelStack(col, tx, rest(k), y0, 8);
+      if (!colR || !col.length) continue;
+      const mid = Math.max(y0 + m.fixedH, colR.end);
+      const belowR = skelStack(below, I, cw, mid + 16, 16);
+      if (!belowR) continue;
+      add(`bild-${side}-${k}${ratio === 1 ? '' : '-hoch'}`, `Bild ${side} · ${k} Spalte${k > 1 ? 'n' : ''}${ratio === 1 ? '' : ' · hoch'}`,
+        [...top, { name: hero.name, role: 'media', x: mx, y: y0, w: m.fixedW, h: m.fixedH }, ...colR.out, ...belowR.out], belowR.out.length ? belowR.end + I : mid + I);
+    }
+    if (!photo) return out;
+    // Randabfallend oben: Bild über die ganze Breite, alles andere mit Inset darunter
+    for (const [ratio, rn] of [[16 / 9, '16:9'], [3 / 2, '3:2'], [1, '1:1']]) {
+      const mh = rnd8(W / ratio), r = skelStack([...head, ...others], I, cw, mh + I, 16);
+      if (r) add(`rand-oben-${rn.replace(':', 'x')}`, `Randabfallend ${rn}`, [{ name: hero.name, role: 'media', x: 0, y: 0, w: W, h: mh, bleed: true }, ...r.out], r.end + I, 0);
+    }
+    // Bühne: Bild füllt die Karte, Text und Aktion liegen unten darauf
+    const list = [...head, ...others];
+    const probe = skelStack(list, I, cw, 0, 16);
+    if (probe) {
+      const H = Math.max(up8(probe.end + 2 * I + W * .4), rnd8(W * 3 / 4));
+      const r = skelStack(list, I, cw, H - I - probe.end, 16);
+      add('buehne', 'Bühne', [{ name: hero.name, role: 'media', x: 0, y: 0, w: W, h: H, bleed: true }, ...r.out.map(b => ({ ...b, onMedia: true }))], H, 0);
+    }
+  } else if (others.length > 1) {
+    // Zwei Spalten: der Rest verteilt sich nebeneinander
+    const half = Math.ceil(others.length / 2), y0 = head.length ? I + skelH(head[0], cw) + 16 : I;
+    const a = skelStack(others.slice(0, half), I, span(2), y0, 16), b = skelStack(others.slice(half), I + span(2) + SKEL_GUT, rest(2), y0, 16);
+    if (a && b) add('zwei-spalten', 'Zwei Spalten', [...(head.length ? skelStack(head, I, cw, I, 16).out : []), ...a.out, ...b.out], Math.max(a.end, b.end) + I);
+  }
+  return out;
+}
+// Merkmale eines Skeletts: Blickfang (R13, grob), linke Kanten (R14), Inset (R2), Richtung für die Variante
+function skelTraits(sk, base) {
+  const A = sk.w * sk.h, I = S.inset, C = compVals();
+  const share = Math.max(0, ...sk.blocks.filter(b => b.role === 'media').map(b => b.w * b.h / A));
+  const big = Math.max(0, ...base.blocks.map(b => b.size)), bigBlock = base.blocks.find(b => b.size === big);
+  const focus = share >= C.focusShare ? `Bild ${Math.round(share * 100)} %` : big >= 20 && bigBlock ? `Schrift ${big} px` : base.focus0 && base.focus0 !== 'Bild' && base.focus0 !== 'Schrift' ? base.focus0 : null;
+  const stacked = sk.blocks.filter(b => !b.bleed && !sk.blocks.some(o => o !== b && overlapY(b, o) > .5));
+  const edges = new Set(stacked.map(b => b.x)).size;
+  const out = sk.blocks.filter(b => !b.bleed && (b.x < I || b.y < I || b.x + b.w > sk.w - I || b.y + b.h > sk.h - I)).map(b => b.name);
+  const issues = [...(focus ? [] : ['R13 kein Blickfang']), ...(edges > C.maxEdges ? [`R14 ${edges} Kanten`] : []), ...(out.length ? [`R2 ${out.join(', ')}`] : []), ...(sk.h > SKEL_MAXH ? [`zu hoch (${sk.h} px)`] : [])];
+  const dir = share >= .35 ? 'bildstaerker' : sk.h <= base.h * .85 ? 'kompakter' : sk.calm ? 'ruhiger' : 'hierarchischer';
+  return { share, focus, edges, issues, dir };
+}
+// Ähnlichkeit zweier Skelette: mittlere Überdeckung (IoU) gleichnamiger Flächen, auf die Kartenmaße normiert
+function skelIoU(p, q) {
+  const n = (b, sk) => ({ x: b.x / sk.w, y: b.y / sk.h, w: b.w / sk.w, h: b.h / sk.h });
+  const vals = p.blocks.map(b => { const o = q.blocks.find(x => x.name === b.name); if (!o) return 0; const a = n(b, p), c = n(o, q); const i = Math.max(0, overlapX(a, c)) * Math.max(0, overlapY(a, c)); return i / (a.w * a.h + c.w * c.h - i || 1); });
+  return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+}
+// Varianten-Wand: gültige Kandidaten, so gewählt, dass jeder sich vom Ausgang und von den anderen möglichst stark unterscheidet
+function skeletonWall(c, l, n = 12) {
+  const base = skeletonOf(c, l);
+  const cands = skeletonCandidates(base).map(sk => ({ ...sk, ...skelTraits(sk, base) })).filter(sk => !sk.issues.length);
+  const picked = [];
+  while (picked.length < n && cands.length) {
+    let best = null, bestD = -1;
+    for (const sk of cands) { const d = Math.min(...[base, ...picked].map(o => 1 - skelIoU(sk, o))); if (d > bestD) { bestD = d; best = sk; } }
+    if (bestD < .3) break; // der Rest wäre fast gleich
+    picked.push({ ...best, dist: r1(bestD) });
+    cands.splice(cands.indexOf(best), 1);
+  }
+  F.skeletons = { c: c.id, l: l.id, base: { ...base, ...skelTraits(base, base) }, items: picked, rejected: skeletonCandidates(base).length - picked.length };
+  return F.skeletons;
+}
+function skelWire(sk, { ghost = false } = {}) {
+  const I = S.inset, cw = sk.w - 2 * I, k = SKEL_COLS;
+  const colW = (cw - (k - 1) * SKEL_GUT) / k;
+  const cols = Array.from({ length: k }, (_, i) => `<i style="left:${I + i * (colW + SKEL_GUT)}px;width:${colW}px"></i>`).join('');
+  const blocks = sk.blocks.map(b => `<div class="cf-sk role-${b.role}${b.onMedia ? ' on-media' : ''}" style="${box(b)}" title="${esc(b.name)} · ${b.x}, ${b.y} · ${b.w} × ${b.h}">${b.role === 'media' ? `<svg viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0L${b.w} ${b.h}M${b.w} 0L0 ${b.h}"/></svg>` : ''}${ghost ? '' : `<em>${ROLE_TAG[b.role] || b.role.toUpperCase()} ${esc(b.name.split(':')[1] || '')} · ${b.w}×${b.est ? '≈' : ''}${b.h}</em>`}</div>`).join('');
+  return `<div class="cf-skel-cols">${cols}</div><div class="cf-skel-inset" style="inset:${I}px"></div>${blocks}`;
+}
+const skelTile = (sk, k) => mini(`<div class="cf-shell cf-skel" style="width:${sk.w}px;height:${sk.h}px">${skelWire(sk)}</div>`, sk.w, sk.h, k);
+function skelOverlay(wall, k) {
+  const all = [wall.base, ...wall.items], W = wall.base.w, H = Math.max(...all.map(s => s.h));
+  return mini(`<div class="cf-shell cf-skel is-overlay" style="width:${W}px;height:${H}px">${all.map((s, i) => `<div class="cf-skel-ghost" style="--o:${i ? .5 : 1}">${skelWire(s, { ghost: true })}</div>`).join('')}</div>`, W, H, k);
+}
+function skeletonPrompt(c, l, sk) {
+  const nid = `${l.id}-${sk.id}`;
+  const plan = { width: sk.w, height: sk.h, padding: sk.pad, flaechen: sk.blocks.map(b => ({ area: b.name, x: b.x, y: b.y, w: b.w, h: b.est ? `≈${b.h}` : b.h, ...(b.bleed ? { bleed: true } : {}), ...(b.onMedia ? { aufBild: true } : {}) })) };
+  return `Variante nach Skelett bauen: Komponente „${c.name}“ (components/${c.id}.js), ausgehend vom Layout „${l.name}“ (id ${l.id}). Skelett „${sk.name}“ aus der Varianten-Wand:
+${JSON.stringify(plan)}
+Füge ein NEUES Layout hinzu, das Ausgangslayout bleibt unverändert: id „${nid}“ (falls vergeben, eine freie id), name „${l.name} · ${sk.name}“, variantOf: „${l.id}“, direction: „${sk.dir}“, width ${sk.w}, height ${sk.h}${sk.pad === 0 ? ', padding: 0' : ''}.
+Die Flächen tragen dieselben data-area-Namen wie im Ausgangslayout und liegen wie im Skelett. Höhen mit ≈ sind geschätzt: an den Inhalt anpassen (8er-Raster) und die Kartenhöhe ausgleichen. Umsetzen mit grid oder flex, festen Größen und gap – keine absoluten Positionen; Text auf Bild (aufBild) über dieselbe Grid-Zelle wie das Bild, lesbar mit Verlauf aus Tokens.
+Schreib in idea zwei kurze Sätze: was zuerst auffällt und warum diese Anordnung dem Inhalt dient.
+Berücksichtige feedback/praeferenzen.js und feedback/leitsaetze.js. Prüfen mit node tools/verify.mjs ${c.id} ${nid}, Bild ansehen, bis alles ✓ ist und gut aussieht.`;
+}
+function skelWallHTML(c, l, n, k = .5) {
+  const wall = skeletonWall(c, l, n), b = wall.base;
+  const tag = sk => `<span class="cf-skel-tags">${sk.w} × ${sk.h}${sk.focus ? ` · ${esc(sk.focus)}` : ''}${sk.dist != null ? ` · ${Math.round(sk.dist * 100)} % anders` : ''}</span>`;
+  return `<div class="cf-skelwall" data-c="${esc(c.id)}" data-l="${esc(l.id)}">
+  <figure class="cf-skel-item is-base"><div class="cf-skel-fig">${skelTile(b, k)}</div><figcaption><b>Ausgang · ${esc(l.name)}</b>${tag(b)}${b.issues.length ? `<span class="cf-skel-bad">${esc(b.issues.join(' · '))}</span>` : ''}</figcaption></figure>
+  ${wall.items.map((sk, i) => `<figure class="cf-skel-item"><div class="cf-skel-fig">${skelTile(sk, k)}</div><figcaption><label><input type="checkbox" data-skel="${i}"> <b>${esc(sk.name)}</b></label>${tag(sk)}<em class="cf-varchip">${esc(dirName(sk.dir))}</em></figcaption></figure>`).join('')}
+  <figure class="cf-skel-item is-overlay"><div class="cf-skel-fig">${skelOverlay(wall, k)}</div><figcaption><b>Überlagerung</b><span class="cf-skel-tags">${wall.items.length + 1} Pläne · ${wall.rejected} verworfen (ungültig oder zu ähnlich)</span></figcaption></figure>
+</div>`;
+}
+function bindSkeletons(sec, c) {
+  const bar = sec.querySelector('.cf-skelbar');
+  sec.querySelector('[data-act="skel"]')?.addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!bar.hidden) { bar.hidden = true; btn.classList.remove('on'); return; }
+    bar.hidden = false;
+    btn.classList.add('on');
+    const base = c.layouts.filter(l => !l.variantOf);
+    bar.innerHTML = `<div class="cf-varrow"><span class="ed-lab">Ausgehend von</span>${seg('sbase', base[0]?.id, base.map((l, i) => [l.id, `${pad2(i + 1)} ${esc(l.name)}`]))}<span class="ed-lab">Höchstens</span>${seg('sn', 12, [[8, '8'], [12, '12'], [24, '24']])}</div>
+      <p class="cf-varhint">Erst der Flächenplan, dann der Code: Die Fabrik ordnet die Flächen des Layouts auf einem ${SKEL_COLS}-Spalten-Raster neu an, verwirft Pläne, die gegen Raster, Inset, Blickfang oder Fluchtlinien verstoßen oder dem Ausgang zu ähnlich sind. Wähle aus, was Claude bauen soll.</p>
+      <div class="cf-skelhost"></div>
+      <div class="cf-varrow"><button type="button" class="cf-btn is-primary" data-a="skel-go" disabled>${F.live ? 'Ausgewählte von Claude bauen lassen' : 'Anweisung für Claude'}</button><span class="cf-varhint" data-a="skel-count">Nichts ausgewählt</span></div>
+      <div class="b-log ed-log cf-varlog"></div>`;
+    const pick = k => bar.querySelector(`[data-seg="${k}"].on`)?.dataset.v;
+    const paint = () => {
+      const l = c.layouts.find(x => x.id === pick('sbase')) || base[0];
+      bar.querySelector('.cf-skelhost').innerHTML = skelWallHTML(c, l, +pick('sn') || 12);
+      count();
+    };
+    const count = () => {
+      const n = bar.querySelectorAll('[data-skel]:checked').length;
+      bar.querySelector('[data-a="skel-count"]').textContent = n ? `${n} ausgewählt – jede wird ein neues Layout mit variantOf` : 'Nichts ausgewählt';
+      bar.querySelector('[data-a="skel-go"]').disabled = !n;
+    };
+    bar.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => { bar.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach(x => x.classList.toggle('on', x === b)); paint(); }));
+    bar.addEventListener('change', e => { if (e.target.matches('[data-skel]')) count(); });
+    bar.querySelector('[data-a="skel-go"]').addEventListener('click', () => {
+      const wall = F.skeletons, l = c.layouts.find(x => x.id === wall.l);
+      const chosen = [...bar.querySelectorAll('[data-skel]:checked')].map(x => wall.items[+x.dataset.skel]);
+      const items = chosen.map(sk => ({ lock: c.id, label: `${l.name} · ${sk.name}`, prompt: skeletonPrompt(c, l, sk) }));
+      const log = bar.querySelector('.cf-varlog');
+      if (!F.live) return copyHint(log, 'Anweisung für Claude Code', items.map(x => x.prompt).join('\n\n---\n\n'));
+      bar.querySelectorAll('button, input').forEach(x => { x.disabled = true; });
+      generateBatch(items, { log, view: 'layouts' });
+    });
+    paint();
+  });
+}
+F.skeletonPrompt = (cid, lid, i) => { const c = F.byId[cid]; return skeletonPrompt(c, c.layouts.find(l => l.id === lid), F.skeletons.items[i]); };
+F.skeletonWall = (cid, lid, n) => { const c = F.byId[cid]; return skeletonWall(c, c.layouts.find(l => l.id === lid) || c.layouts[0], n); };
+
 // opts: { scen: Stresstest-Fall, state: Zustand, width: Breite } – alles gleichzeitig möglich
 function layGridHTML(c, opts = {}) {
   const scen = opts.scen && opts.scen.id !== 'normal' ? opts.scen : null;
@@ -1533,10 +1811,12 @@ function viewLayouts() {
   main.innerHTML = `<div class="v-layouts">${errorsHTML()}${state.solo ? '' : widthToolsHTML()}${list.length ? list.map(c => {
     const bps = c.layouts.map(l => bpOf(c, l));
     return `<section class="cf-lay" id="lay-${esc(c.id)}">
-  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button><button type="button" class="cf-edit cf-var-btn" data-act="states">${icon('grid', 14)}Familie & Zustände</button><button type="button" class="cf-edit cf-var-btn" data-act="handoff">${icon('arrow-up-right', 14)}Übergabe</button>`}</header>
+  <header class="cf-row-head"><h2>${esc(c.name)}</h2>${badgeHTML(bps)}${state.solo ? '' : `<button type="button" class="cf-edit cf-stress-btn" data-act="stress">${icon('refresh', 14)}Stresstest</button><button type="button" class="cf-edit cf-var-btn" data-act="variant">${icon('plus', 14)}Variante</button><button type="button" class="cf-edit cf-var-btn" data-act="skel">${icon('image', 14)}Skelette</button><button type="button" class="cf-edit cf-var-btn" data-act="states">${icon('grid', 14)}Familie & Zustände</button><button type="button" class="cf-edit cf-var-btn" data-act="handoff">${icon('arrow-up-right', 14)}Übergabe</button>`}</header>
   <ul class="cf-viol">${findingsItems(bps, true)}</ul>
   <div class="cf-stressbar" hidden></div>
   <div class="cf-varbar" hidden></div>
+  <div class="cf-varbar cf-skelbar" hidden></div>
+  ${state.solo && SKEL_Q != null ? `<div class="cf-varbar cf-skelsolo">${skelWallHTML(c, c.layouts.find(l => l.id === SKEL_Q) || c.layouts[0], +Q.get('n') || 12)}</div>` : ''}
   <div class="cf-varbar cf-statebar" hidden></div>
   <div class="cf-varbar cf-handbar" hidden></div>
   <div class="cf-lay-grid">${layGridHTML(c)}</div>
@@ -1544,7 +1824,7 @@ function viewLayouts() {
   }).join('') : emptyHTML()}</div>`;
   main.querySelectorAll('.cf-lay [data-act="viol"]').forEach(b => b.addEventListener('click', () => b.closest('.cf-lay').classList.toggle('show-viol')));
   bindLayItems(main);
-  main.querySelectorAll('.cf-lay').forEach(sec => { const c = F.byId[sec.id.slice(4)]; bindStress(sec, c); bindVariant(sec, c); bindStates(sec, c); bindHandoff(sec, c); });
+  main.querySelectorAll('.cf-lay').forEach(sec => { const c = F.byId[sec.id.slice(4)]; bindStress(sec, c); bindVariant(sec, c); bindSkeletons(sec, c); bindStates(sec, c); bindHandoff(sec, c); });
   bindWidthTools();
   if (state.solo) main.querySelectorAll('.cf-lay').forEach(r => r.classList.add('show-viol'));
   else if (state.c) requestAnimationFrame(() => document.getElementById(`lay-${state.c}`)?.scrollIntoView({ block: 'start' }));
@@ -1582,12 +1862,13 @@ function colorTokens() {
   return [...names].map(n => ({ name: n, value: cs.getPropertyValue(n).trim() }));
 }
 
-const FIG_BY_CHECK = [['grid', 'grid'], ['spacing', 'grid'], ['inset', 'inset'], ['family', 'fonts'], ['radius', 'radii'], ['areas', 'areas'], ['overflow', 'structure'], ['color', 'colors'], ['target', 'targets'], ['consistency', 'cons'], ['dark', 'dark'], ['lock', 'lock']];
+const FIG_BY_CHECK = [['grid', 'grid'], ['spacing', 'grid'], ['inset', 'inset'], ['family', 'fonts'], ['radius', 'radii'], ['areas', 'areas'], ['overflow', 'structure'], ['color', 'colors'], ['target', 'targets'], ['consistency', 'cons'], ['dark', 'dark'], ['lock', 'lock'], ['focus', 'skel'], ['edges', 'skel'], ['proximity', 'structure']];
 const figKey = rule => rule.fig || (FIG_BY_CHECK.find(([k]) => (rule.checks || []).includes(k)) || [])[1] || ({ R1: 'grid', R2: 'inset', R3: 'fonts', R4: 'radii', R5: 'areas', R6: 'structure', R7: 'colors', R8: 'three', R10: 'targets', R11: 'cons' })[rule.id];
 function ruleFigure(rule, ex) {
   const { c, l, bp } = ex.main;
   switch (figKey(rule)) {
     case 'grid': return mini(layerCard('areas', bp), bp.w, bp.h, .64);
+    case 'skel': return skelTile(skeletonOf(c, l), .64);
     case 'inset': return `<div class="rs-inset">${mini(layerCard('pixels', bp), bp.w, bp.h, .64)}<span>Inset ${S.inset} px</span></div>`;
     case 'fonts': return mini(layerCard('fonts', ex.type.bp), ex.type.bp.w, ex.type.bp.h, .64);
     case 'radii': return `<div class="rs-radii">${[...S.innerRadii, 'card'].map(r => {
