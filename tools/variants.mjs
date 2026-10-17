@@ -28,8 +28,9 @@ const res = await withPage(pageURL(`view=layouts&c=${encodeURIComponent(id)}&sol
 const { wall, prompts } = res;
 if (want != null) { console.log(prompts[+want - 1] || `Kein Skelett ${want} (1–${prompts.length})`); process.exit(prompts[+want - 1] ? 0 : 2); }
 if (args.includes('--json')) { console.log(JSON.stringify(wall, null, 2)); process.exit(0); }
-const line = (nr, sk) => `${String(nr).padStart(2)}  ${sk.name.padEnd(30)} ${`${sk.w} × ${sk.h}`.padEnd(10)} ${(sk.focus || 'kein Blickfang').padEnd(14)} ${sk.dist != null ? `${Math.round(sk.dist * 100)} % anders` : ''}${sk.dir ? ` · ${sk.dir}` : ''}`;
-console.log(`Skelette für ${wall.c} / ${wall.l} · ${wall.items.length} gezeigt, ${wall.rejected} verworfen (ungültig oder zu ähnlich)`);
+const st = sk => !sk.check ? '' : sk.check.muss.length ? ` · ✕ ${sk.check.muss[0]}` : sk.check.soll.length ? ` · Hinweis: ${sk.check.soll[0]}` : ' · hält';
+const line = (nr, sk) => `${String(nr).padStart(2)}  ${sk.name.padEnd(30)} ${`${sk.w} × ${sk.h}`.padEnd(10)} ${(sk.focus || 'kein Blickfang').padEnd(14)} ${sk.dist != null ? `${Math.round(sk.dist * 100)} % anders` : ''}${sk.dir ? ` · ${sk.dir}` : ''}${st(sk)}`;
+console.log(`Skelette für ${wall.c} / ${wall.l} · ${wall.items.length} gezeigt, ${wall.rejected.length} verworfen (ungültig oder zu ähnlich) · Vorschau mit echtem Inhalt geprüft`);
 console.log(line(0, wall.base).replace(/^ 0/, ' –'));
 wall.items.forEach((sk, i) => console.log(line(i + 1, sk)));
 console.log(`\nBild: ${path.relative(ROOT, file)} – ansehen, dann Anweisung holen: node tools/variants.mjs ${id} ${wall.l} --prompt=<nr>`);

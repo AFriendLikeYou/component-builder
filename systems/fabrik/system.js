@@ -120,5 +120,9 @@ window.SYSTEM = {
       id: 'R15', title: 'Nähe', checks: ['proximity'], level: 'soll',
       text: 'Was zusammengehört, steht enger als das, was getrennt ist: Die größte Lücke innerhalb einer Fläche ist kleiner als ihr Abstand zur Nachbarfläche darüber oder darunter.',
     },
+    {
+      id: 'R16', title: 'Bedienbar', checks: ['a11yname', 'a11ystate', 'keyboard'],
+      text: 'Jedes Bedienelement hat einen Namen (sichtbarer Text oder `aria-label`), ist mit der Tastatur erreichbar (`<button>`, Link oder `tabindex="0"`) und macht seinen Zustand hörbar: Umschalter mit `aria-pressed`, Abhaken mit `role="checkbox"` und `aria-checked`. Maßstab sind die WAI-ARIA Authoring Practices.',
+    },
   ],
 };

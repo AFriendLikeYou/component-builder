@@ -80,6 +80,8 @@ F.load = async ids => {
   await addScript(`media/_media.js${bust}`);
   await addScript(`feedback/praeferenzen.js${bust}`);
   await addScript(`feedback/leitsaetze.js${bust}`);
+  await addScript(`feedback/vergleiche.js${bust}`);
+  if (location.protocol === 'file:') { try { const own = JSON.parse(localStorage.getItem('cf.vergleiche') || '[]'); if (own.length > (window.CF_VERGLEICHE || []).length) window.CF_VERGLEICHE = own; } catch {} }
   boot();
 };
 
@@ -343,9 +345,9 @@ function suggestAtom(el) {
   return alpha(getComputedStyle(el).backgroundColor) > .04 ? atomById('btn-pill') : atomById('btn-text');
 }
 
-function measure(c, l, host) {
+function measure(c, l, host, html = null) {
   MEASURING = true;
-  host.innerHTML = cardHTML(c, l);
+  host.innerHTML = html ?? cardHTML(c, l);
   MEASURING = false;
   const card = host.firstElementChild;
   const cb = card.getBoundingClientRect();
@@ -403,6 +405,13 @@ function measure(c, l, host) {
     const bg = parseColor(getComputedStyle(el).backgroundColor), cbg = parseColor(getComputedStyle(card).backgroundColor);
     const filled = !!bg && bg.a > .5 && (!cbg || bg.rgb.reduce((s, v, i) => s + Math.abs(v - cbg.rgb[i]), 0) > 120);
     bp.controls.push({ ...r, r: Math.min(radiusPx(el, r.w, r.h), r.w / 2, r.h / 2), filled });
+    // R16 Bedienbar: Name für Screenreader, Zustand, Tastatur (nach WAI-ARIA APG)
+    const said = (el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('aria-labelledby') || [...el.childNodes].filter(n => !(n instanceof SVGElement)).map(n => n.textContent).join('')).trim();
+    const what = `„${(said || el.className.toString().split(' ')[0] || el.tagName.toLowerCase()).slice(0, 24)}“`;
+    if (!said) V('a11yname', `Bedienelement ${what} hat keinen Namen – Text oder aria-label, sonst liest ein Screenreader nur „Schaltfläche“`);
+    if (el.tabIndex < 0 && !el.disabled) V('keyboard', `Bedienelement ${what} ist mit der Tastatur nicht erreichbar – <button> nehmen oder tabindex="0" setzen`);
+    if (el.matches('.toggle') && !el.hasAttribute('aria-pressed')) V('a11ystate', `Umschalter ${what} ohne aria-pressed – sein Zustand ist nicht hörbar`);
+    if (el.matches('.check') && (el.getAttribute('role') !== 'checkbox' || !el.hasAttribute('aria-checked'))) V('a11ystate', `Abhaken ${what} braucht role="checkbox" und aria-checked`);
     const min = S.minTarget || 0;
     if (min && (r.w < min - .5 || r.h < min - .5)) {
       const label = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24) || el.tagName.toLowerCase();
@@ -1509,7 +1518,9 @@ function skeletonOf(c, l) {
     const ts = bp.texts.filter(t => t.lines.some(ln => { const cx = ln.x + ln.w / 2, cy = ln.y + ln.h / 2; return cx >= a.x && cx <= a.x + a.w && cy >= a.y && cy <= a.y + a.h; }));
     const ks = bp.controls.filter(k => insideRect(k, a));
     const minW = a.role === 'media' ? 64 : ks.length && a.role === 'control' ? up8(Math.max(...ks.map(k => k.x + k.w)) - Math.min(...ks.map(k => k.x))) : Math.min(a.w, 144);
-    return { name: a.name, role: a.role, x: a.x, y: a.y, w: a.w, h: a.h, bleed: a.bleed, size: Math.max(0, ...ts.map(t => t.size)), minW };
+    // Foto (h.media) oder Grafik (SVG, Diagramm): nur Fotos dürfen randabfallend werden oder Text tragen
+    const foto = bp.media.some(m => insideRect(m, a) || (Math.abs(m.x - a.x) < 1 && Math.abs(m.y - a.y) < 1 && Math.abs(m.w - a.w) < 1));
+    return { name: a.name, role: a.role, x: a.x, y: a.y, w: a.w, h: a.h, bleed: a.bleed, size: Math.max(0, ...ts.map(t => t.size)), minW, foto };
   });
   return { id: 'ausgang', name: 'Ausgang', w: bp.w, h: bp.h, pad: l.padding ?? S.inset, blocks, focus0: bp.focus };
 }
@@ -1593,7 +1604,7 @@ function skeletonCandidates(base) {
       add(`bild-${side}-${k}${ratio === 1 ? '' : '-hoch'}`, `Bild ${side} · ${k} Spalte${k > 1 ? 'n' : ''}${ratio === 1 ? '' : ' · hoch'}`,
         [...top, { name: hero.name, role: 'media', x: mx, y: y0, w: m.fixedW, h: m.fixedH }, ...colR.out, ...belowR.out], belowR.out.length ? belowR.end + I : mid + I);
     }
-    if (!photo) return out;
+    if (!photo || !hero.foto) return out; // Grafiken und kleine Medien: nicht randabfallend, kein Text darauf
     // Randabfallend oben: Bild über die ganze Breite, alles andere mit Inset darunter
     for (const [ratio, rn] of [[16 / 9, '16:9'], [3 / 2, '3:2'], [1, '1:1']]) {
       const mh = rnd8(W / ratio), r = skelStack([...head, ...others], I, cw, mh + I, 16);
@@ -1635,19 +1646,134 @@ function skelIoU(p, q) {
   return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
 }
 // Varianten-Wand: gültige Kandidaten, so gewählt, dass jeder sich vom Ausgang und von den anderen möglichst stark unterscheidet
-function skeletonWall(c, l, n = 12) {
-  const base = skeletonOf(c, l);
-  const cands = skeletonCandidates(base).map(sk => ({ ...sk, ...skelTraits(sk, base) })).filter(sk => !sk.issues.length);
-  const picked = [];
-  while (picked.length < n && cands.length) {
+function skeletonWall(c, l, n = 12, { seed = null } = {}) {
+  const base = skeletonOf(c, l), traits = sk => ({ ...sk, ...skelTraits(sk, base) });
+  const pool = (seed ? skelMutations(seed) : skeletonCandidates(base)).map(traits);
+  const valid = pool.filter(sk => !sk.issues.length);
+  const rejected = pool.filter(sk => sk.issues.length).map(sk => ({ ...sk, why: sk.issues.join(' · ') }));
+  const ref = seed ? [base, seed] : [base], picked = [];
+  // so wählen, dass jeder Plan sich vom Ausgang (und beim „Mehr davon“ vom Ausgangsplan) und von den anderen möglichst stark unterscheidet
+  while (picked.length < n && valid.length) {
     let best = null, bestD = -1;
-    for (const sk of cands) { const d = Math.min(...[base, ...picked].map(o => 1 - skelIoU(sk, o))); if (d > bestD) { bestD = d; best = sk; } }
-    if (bestD < .3) break; // der Rest wäre fast gleich
+    for (const sk of valid) { const d = Math.min(...[...ref, ...picked].map(o => 1 - skelIoU(sk, o))); if (d > bestD) { bestD = d; best = sk; } }
+    if (bestD < (seed ? .05 : .3)) break; // der Rest wäre fast gleich
     picked.push({ ...best, dist: r1(bestD) });
-    cands.splice(cands.indexOf(best), 1);
+    valid.splice(valid.indexOf(best), 1);
   }
-  F.skeletons = { c: c.id, l: l.id, base: { ...base, ...skelTraits(base, base) }, items: picked, rejected: skeletonCandidates(base).length - picked.length };
+  for (const sk of valid) {
+    const near = [...ref, ...picked].map(o => ({ o, s: skelIoU(sk, o) })).sort((p, q) => q.s - p.s)[0];
+    rejected.push({ ...sk, why: `zu ähnlich wie „${near.o.name}“ (nur ${Math.round((1 - near.s) * 100)} % anders)` });
+  }
+  [...picked, ...rejected].forEach(sk => skelPreview(c, l, sk));
+  F.skeletons = { c: c.id, l: l.id, seed: seed || null, base: traits(base), items: picked, rejected };
   return F.skeletons;
+}
+// „Mehr davon“: kleine Schritte um einen Plan herum – Abstände, Reihenfolge benachbarter Zeilen, Bildgröße, Spiegeln
+function skelMutations(seed) {
+  const W = seed.w, out = [], short = b => b.name.split(':')[1] || b.name;
+  const rows = [];
+  for (const b of [...seed.blocks].sort((p, q) => p.y - q.y)) { const r = rows.find(x => x.some(o => overlapY(o, b) > .5)); r ? r.push(b) : rows.push([b]); }
+  const top = r => Math.min(...r.map(b => b.y)), bot = r => Math.max(...r.map(b => b.y + b.h));
+  const mk = (id, name, blocks, h) => out.push({ id: `${seed.id}~${id}`, name: `${seed.name} · ${name}`, w: W, h: up8(h), pad: seed.pad, blocks: blocks.map(b => ({ ...b })), calm: seed.calm });
+  const mirror = () => seed.blocks.map(b => (b.bleed || b.w >= W - 2 * S.inset ? b : { ...b, x: W - b.x - b.w }));
+  const stage = seed.blocks.some(b => b.bleed && b.h >= seed.h - 1);
+  if (seed.blocks.some(b => !b.bleed && b.w < W - 2 * S.inset)) mk('spiegel', 'gespiegelt', mirror(), seed.h);
+  if (stage) {
+    // Bühne: höher oder niedriger, Text bleibt unten
+    for (const [d, nm] of [[64, 'höher'], [-48, 'niedriger']]) mk(`h${d}`, nm, seed.blocks.map(b => (b.bleed && b.h >= seed.h - 1 ? { ...b, h: b.h + d } : { ...b, y: b.y + d })), seed.h + d);
+    return out;
+  }
+  const gaps = rows.slice(1).map((r, i) => top(r) - bot(rows[i])), tail = seed.h - bot(rows[rows.length - 1]);
+  const restack = (order, gs, resize = new Map()) => {
+    let y = top(rows[0]);
+    const blocks = [];
+    order.forEach((r, i) => {
+      const rh = Math.max(...r.map(b => b.y - top(r) + (resize.get(b) ?? b.h)));
+      r.forEach(b => blocks.push({ ...b, y: y + b.y - top(r), h: resize.get(b) ?? b.h }));
+      y += rh + (gs[i] ?? 0);
+    });
+    return [blocks, y - (gs[order.length - 1] ?? 0) + tail];
+  };
+  if (gaps.length) {
+    mk('luftiger', 'luftiger', ...restack(rows, gaps.map(g => g + 8)));
+    if (gaps.some(g => g > 8)) mk('dichter', 'dichter', ...restack(rows, gaps.map(g => Math.max(8, g - 8))));
+  }
+  const fixed = r => r.some(b => b.name === 'text:kopf' || b.bleed);
+  for (let i = 0; i + 1 < rows.length; i++) {
+    if (fixed(rows[i]) || fixed(rows[i + 1])) continue;
+    const order = [...rows]; [order[i], order[i + 1]] = [order[i + 1], order[i]];
+    mk(`tausch${i}`, `${order[i].map(short).join(' + ')} vor ${order[i + 1].map(short).join(' + ')}`, ...restack(order, gaps));
+  }
+  for (const b of seed.blocks.filter(x => x.role === 'media')) {
+    for (const [f, nm] of [[4 / 3, 'Bild größer'], [3 / 4, 'Bild kleiner']]) {
+      const h = Math.max(64, rnd8(b.h * f));
+      if (b.bleed) mk(`bild${f > 1 ? '+' : '-'}`, nm, ...restack(rows, gaps, new Map([[b, h]])));
+      else { const w = Math.min(W - 2 * S.inset, rnd8(b.w * f)); const inRow = rows.find(r => r.includes(b)).length > 1; if (!inRow || w === b.w) mk(`bild${f > 1 ? '+' : '-'}`, nm, ...restack(rows, gaps, new Map([[b, h]]))); }
+    }
+  }
+  return out;
+}
+// Sofortvorschau: die echten Flächen des Ausgangslayouts an die Stellen des Plans setzen und wie jede Karte vermessen.
+// Vorfahren werden mit display: contents nachgebaut, damit die Selektoren der Komponente weiter greifen.
+function skelPreviewHTML(c, l, sk) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = cardHTML(c, l);
+  const card = tpl.content.firstElementChild;
+  if (!card) return '';
+  const areas = new Map([...card.querySelectorAll('[data-area]')].map(el => [el.dataset.area, el]));
+  const onMedia = sk.blocks.filter(b => b.onMedia);
+  const part = b => {
+    const el = areas.get(b.name);
+    if (!el) return '';
+    let node = el.cloneNode(true);
+    if (b.bleed) node.setAttribute('data-bleed', '');
+    node.style.cssText += ';margin:0 !important;width:100% !important;height:100% !important;max-width:none !important;min-width:0 !important;grid-area:auto !important;align-self:stretch !important;flex:none !important';
+    for (let p = el.parentElement; p && p !== card; p = p.parentElement) { const s = p.cloneNode(false); s.removeAttribute('data-area'); s.style.cssText = 'display:contents'; s.appendChild(node); node = s; }
+    const ink = b.onMedia ? ';color:var(--c-on-dark);--c-ink-2:var(--c-on-dark-2);--c-ink-3:var(--c-on-dark-2)' : ''; // nur Text hell, Bausteine behalten ihre Farben
+    return `<div data-pv="${esc(b.name)}" style="position:absolute;${box(b)}${ink}">${node.outerHTML}</div>`;
+  };
+  const scrim = onMedia.length ? `<div style="position:absolute;left:0;right:0;bottom:0;top:${Math.max(0, Math.min(...onMedia.map(b => b.y)) - 40)}px;background:linear-gradient(to top, color-mix(in srgb, var(--c-dark) 72%, transparent), transparent)"></div>` : '';
+  card.setAttribute('style', `width:${sk.w}px;height:${sk.h}px;padding:0;position:relative`);
+  card.innerHTML = sk.blocks.filter(b => b.role === 'media').map(part).join('') + scrim + sk.blocks.filter(b => b.role !== 'media').map(part).join('');
+  return card.outerHTML;
+}
+// Platzbedarf jeder Fläche im Ausgangslayout – was dort schon übersteht, ist kein Fehler des Plans
+const NEED0 = new Map();
+const areaNeed = (a, w) => up8(Math.max(a.scrollHeight, ...[...a.querySelectorAll('*')].map(x => x.getBoundingClientRect().bottom - w.getBoundingClientRect().top)));
+function baseNeeds(c, l) {
+  const key = `${c.id}/${l.id}`;
+  if (NEED0.has(key)) return NEED0.get(key);
+  const host = document.createElement('div');
+  host.id = 'cf-measure';
+  document.body.appendChild(host);
+  const out = {};
+  try { host.innerHTML = cardHTML(c, l); host.querySelectorAll('[data-area]').forEach(a => { out[a.dataset.area] = areaNeed(a, a) - up8(a.getBoundingClientRect().height); }); } finally { host.remove(); }
+  NEED0.set(key, out);
+  return out;
+}
+function skelPreview(c, l, sk) {
+  if (sk.pv != null) return sk;
+  const over0 = baseNeeds(c, l);
+  const html = skelPreviewHTML(c, l, sk);
+  const host = document.createElement('div');
+  host.id = 'cf-measure';
+  document.body.appendChild(host);
+  try {
+    const bp = measure(c, { ...l, id: `${l.id}~${sk.id}`, height: sk.h, padding: 0 }, host, html);
+    // braucht eine Fläche mehr Platz, als der Plan ihr gibt? (gemessen am echten Inhalt)
+    sk.need = {};
+    const tight = [];
+    host.querySelectorAll('[data-pv]').forEach(w => {
+      const a = w.querySelector('[data-area]'), b = sk.blocks.find(x => x.name === w.dataset.pv);
+      if (!a || !b || b.role === 'media') return;
+      const need = areaNeed(a, w) - Math.max(0, over0[b.name] || 0);
+      if (need !== b.h) sk.need[b.name] = need;
+      if (need > b.h + 1) tight.push(`${b.name.split(':')[1]} braucht ${need} statt ${b.h} px`);
+    });
+    sk.check = { muss: bp.violations.map(v => v.msg), soll: [...tight, ...bp.warnings.map(v => v.msg)] };
+  } finally { host.remove(); }
+  sk.pv = html;
+  return sk;
 }
 function skelWire(sk, { ghost = false } = {}) {
   const I = S.inset, cw = sk.w - 2 * I, k = SKEL_COLS;
@@ -1663,22 +1789,67 @@ function skelOverlay(wall, k) {
 }
 function skeletonPrompt(c, l, sk) {
   const nid = `${l.id}-${sk.id}`;
-  const plan = { width: sk.w, height: sk.h, padding: sk.pad, flaechen: sk.blocks.map(b => ({ area: b.name, x: b.x, y: b.y, w: b.w, h: b.est ? `≈${b.h}` : b.h, ...(b.bleed ? { bleed: true } : {}), ...(b.onMedia ? { aufBild: true } : {}) })) };
+  const plan = { width: sk.w, height: sk.h, padding: sk.pad, flaechen: sk.blocks.map(b => ({ area: b.name, x: b.x, y: b.y, w: b.w, h: sk.need?.[b.name] ? `${sk.need[b.name]} (gemessen, Plan ${b.h})` : b.est ? `≈${b.h}` : b.h, ...(b.bleed ? { bleed: true } : {}), ...(b.onMedia ? { aufBild: true } : {}) })) };
   return `Variante nach Skelett bauen: Komponente „${c.name}“ (components/${c.id}.js), ausgehend vom Layout „${l.name}“ (id ${l.id}). Skelett „${sk.name}“ aus der Varianten-Wand:
 ${JSON.stringify(plan)}
 Füge ein NEUES Layout hinzu, das Ausgangslayout bleibt unverändert: id „${nid}“ (falls vergeben, eine freie id), name „${l.name} · ${sk.name}“, variantOf: „${l.id}“, direction: „${sk.dir}“, width ${sk.w}, height ${sk.h}${sk.pad === 0 ? ', padding: 0' : ''}.
-Die Flächen tragen dieselben data-area-Namen wie im Ausgangslayout und liegen wie im Skelett. Höhen mit ≈ sind geschätzt: an den Inhalt anpassen (8er-Raster) und die Kartenhöhe ausgleichen. Umsetzen mit grid oder flex, festen Größen und gap – keine absoluten Positionen; Text auf Bild (aufBild) über dieselbe Grid-Zelle wie das Bild, lesbar mit Verlauf aus Tokens.
+Die Flächen tragen dieselben data-area-Namen wie im Ausgangslayout und liegen wie im Skelett. Höhen mit „gemessen“ hat die Sofortvorschau am echten Inhalt ermittelt, Höhen mit ≈ sind geschätzt: an den Inhalt anpassen (8er-Raster) und die Kartenhöhe ausgleichen. Umsetzen mit grid oder flex, festen Größen und gap – keine absoluten Positionen; Text auf Bild (aufBild) über dieselbe Grid-Zelle wie das Bild, lesbar mit Verlauf aus Tokens.
 Schreib in idea zwei kurze Sätze: was zuerst auffällt und warum diese Anordnung dem Inhalt dient.
 Berücksichtige feedback/praeferenzen.js und feedback/leitsaetze.js. Prüfen mit node tools/verify.mjs ${c.id} ${nid}, Bild ansehen, bis alles ✓ ist und gut aussieht.`;
 }
-function skelWallHTML(c, l, n, k = .5) {
-  const wall = skeletonWall(c, l, n), b = wall.base;
-  const tag = sk => `<span class="cf-skel-tags">${sk.w} × ${sk.h}${sk.focus ? ` · ${esc(sk.focus)}` : ''}${sk.dist != null ? ` · ${Math.round(sk.dist * 100)} % anders` : ''}</span>`;
+/* Paarvergleich: blind zwei Pläne nebeneinander, Rangfolge nach Bradley-Terry. Gespeichert in feedback/vergleiche.js */
+const duelKey = (cid, lid) => `${cid}/${lid}`;
+const duelsFor = (cid, lid) => (window.CF_VERGLEICHE || []).filter(v => v.c === cid && v.l === lid);
+function rankPlans(votes) {
+  const ids = [...new Set(votes.flatMap(v => [v.a.id, v.b.id]))], p = Object.fromEntries(ids.map(i => [i, 1]));
+  const wins = Object.fromEntries(ids.map(i => [i, 0])), games = Object.fromEntries(ids.map(i => [i, 0]));
+  for (const v of votes) { games[v.a.id]++; games[v.b.id]++; wins[v.a.id] += v.winner === 'a' ? 1 : v.winner === 'gleich' ? .5 : 0; wins[v.b.id] += v.winner === 'b' ? 1 : v.winner === 'gleich' ? .5 : 0; }
+  for (let it = 0; it < 60; it++) {
+    for (const i of ids) {
+      const den = votes.reduce((s, v) => s + (v.a.id === i ? 1 / (p[i] + p[v.b.id]) : v.b.id === i ? 1 / (p[i] + p[v.a.id]) : 0), 0);
+      p[i] = Math.max(.01, (wins[i] + .1) / (den || 1));
+    }
+    const sum = ids.reduce((s, i) => s + p[i], 0);
+    ids.forEach(i => { p[i] = p[i] * ids.length / sum; });
+  }
+  return Object.fromEntries(ids.map(i => [i, { score: p[i], wins: wins[i], games: games[i] }]));
+}
+const planInfo = sk => ({ id: sk.id, name: sk.name, dir: sk.dir || null, h: sk.h, focus: sk.focus || null });
+async function saveDuel(entry) {
+  const v = { ...entry, when: new Date().toISOString().slice(0, 10), system: SYS_ID };
+  window.CF_VERGLEICHE = [...(window.CF_VERGLEICHE || []), v];
+  if (F.live) { try { await fetch('/api/vergleich', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) }); } catch {} }
+  else { try { localStorage.setItem('cf.vergleiche', JSON.stringify(window.CF_VERGLEICHE)); } catch {} }
+}
+function skelWallHTML(c, l, n, k = .5, { seed = null, mode = 'vorschau' } = {}) {
+  const wall = skeletonWall(c, l, n, { seed }), b = wall.base;
+  const rank = rankPlans(duelsFor(c.id, l.id));
+  const fig = sk => (mode === 'vorschau' && sk.pv ? mini(sk.pv, sk.w, sk.h, k) : skelTile(sk, k));
+  const status = sk => !sk.check ? '' : sk.check.muss.length ? `<span class="cf-skel-st is-bad" title="${esc(sk.check.muss.join('\n'))}">${sk.check.muss.length} Verstoß${sk.check.muss.length > 1 ? 'e' : ''} mit echtem Inhalt</span>`
+    : sk.check.soll.length ? `<span class="cf-skel-st is-warn" title="${esc(sk.check.soll.join('\n'))}">hält · ${sk.check.soll.length} Hinweis${sk.check.soll.length > 1 ? 'e' : ''}</span>` : '<span class="cf-skel-st is-ok">hält mit echtem Inhalt</span>';
+  const score = sk => { const r = rank[sk.id]; return r ? ` · ${r.wins}:${r.games - r.wins} im Vergleich` : ''; };
+  const tag = sk => `<span class="cf-skel-tags">${sk.w} × ${sk.h}${sk.focus ? ` · ${esc(sk.focus)}` : ''}${sk.dist != null ? ` · ${Math.round(sk.dist * 100)} % anders` : ''}${score(sk)}</span>`;
+  const baseFig = mode === 'vorschau' ? mini(cardHTML(c, l), b.w, b.h, k) : skelTile(b, k);
   return `<div class="cf-skelwall" data-c="${esc(c.id)}" data-l="${esc(l.id)}">
-  <figure class="cf-skel-item is-base"><div class="cf-skel-fig">${skelTile(b, k)}</div><figcaption><b>Ausgang · ${esc(l.name)}</b>${tag(b)}${b.issues.length ? `<span class="cf-skel-bad">${esc(b.issues.join(' · '))}</span>` : ''}</figcaption></figure>
-  ${wall.items.map((sk, i) => `<figure class="cf-skel-item"><div class="cf-skel-fig">${skelTile(sk, k)}</div><figcaption><label><input type="checkbox" data-skel="${i}"> <b>${esc(sk.name)}</b></label>${tag(sk)}<em class="cf-varchip">${esc(dirName(sk.dir))}</em></figcaption></figure>`).join('')}
-  <figure class="cf-skel-item is-overlay"><div class="cf-skel-fig">${skelOverlay(wall, k)}</div><figcaption><b>Überlagerung</b><span class="cf-skel-tags">${wall.items.length + 1} Pläne · ${wall.rejected} verworfen (ungültig oder zu ähnlich)</span></figcaption></figure>
-</div>`;
+  ${seed ? `<figure class="cf-skel-item is-base"><div class="cf-skel-fig">${mode === 'vorschau' && seed.pv ? mini(seed.pv, seed.w, seed.h, k) : skelTile(seed, k)}</div><figcaption><b>Mehr davon: ${esc(seed.name)}</b><button type="button" class="ed-mini" data-a="skel-back">Zurück zur ganzen Wand</button></figcaption></figure>`
+    : `<figure class="cf-skel-item is-base"><div class="cf-skel-fig">${baseFig}</div><figcaption><b>Ausgang · ${esc(l.name)}</b>${tag(b)}</figcaption></figure>`}
+  ${wall.items.map((sk, i) => `<figure class="cf-skel-item"><div class="cf-skel-fig">${fig(sk)}</div><figcaption><label><input type="checkbox" data-skel="${i}"> <b>${esc(sk.name)}</b></label>${tag(sk)}${status(sk)}<span class="cf-skel-acts"><em class="cf-varchip">${esc(dirName(sk.dir))}</em><button type="button" class="ed-mini" data-seed="${i}">Mehr davon</button></span></figcaption></figure>`).join('')}
+  ${seed ? '' : `<figure class="cf-skel-item is-overlay"><div class="cf-skel-fig">${skelOverlay(wall, k)}</div><figcaption><b>Überlagerung</b><span class="cf-skel-tags">${wall.items.length + 1} Pläne übereinander</span></figcaption></figure>`}
+</div>
+${wall.rejected.length ? `<details class="cf-skel-rej"><summary>${wall.rejected.length} verworfene Pläne – und warum</summary><div class="cf-skelwall">${wall.rejected.map(sk => `<figure class="cf-skel-item is-rej"><div class="cf-skel-fig">${fig(sk)}</div><figcaption><b>${esc(sk.name)}</b><span class="cf-skel-bad">${esc(sk.why)}</span>${status(sk)}</figcaption></figure>`).join('')}</div></details>` : ''}`;
+}
+function duelHTML(c, l, k = .62) {
+  const wall = F.skeletons, all = [{ ...wall.base, pv: cardHTML(c, l), name: `Ausgang · ${l.name}` }, ...wall.items];
+  if (all.length < 2) return '<p class="cf-varhint">Zu wenige Pläne für einen Vergleich.</p>';
+  // Paare mit den wenigsten bisherigen Vergleichen zuerst, Seiten zufällig
+  const done = duelsFor(c.id, l.id), cnt = (a, b) => done.filter(v => (v.a.id === a.id && v.b.id === b.id) || (v.a.id === b.id && v.b.id === a.id)).length;
+  const pairs = all.flatMap((a, i) => all.slice(i + 1).map(b => [a, b])).sort((p, q) => cnt(...p) - cnt(...q) || Math.random() - .5);
+  const [a, b] = Math.random() < .5 ? pairs[0] : [pairs[0][1], pairs[0][0]];
+  F.duel = { a, b };
+  const side = (sk, s) => `<div class="cf-duel-side" role="button" tabindex="0" aria-label="${s === 'a' ? 'Links' : 'Rechts'} besser" data-win="${s}">${mini(sk.pv, sk.w, sk.h, k)}</div>`; // Karten enthalten Knöpfe – daher kein <button> drumherum
+  return `<div class="cf-duel-pair">${side(a, 'a')}${side(b, 'b')}</div>
+  <div class="cf-varrow"><button type="button" class="cf-btn" data-win="a">Links besser</button><button type="button" class="cf-btn" data-win="gleich">Gleich gut</button><button type="button" class="cf-btn" data-win="b">Rechts besser</button><input data-a="duel-why" placeholder="Warum? (optional, hilft beim Ableiten von Leitsätzen)" aria-label="Warum"></div>
+  <p class="cf-varhint">${done.length} Vergleiche für dieses Layout. Namen sind verborgen, damit nur das Bild entscheidet.</p>`;
 }
 function bindSkeletons(sec, c) {
   const bar = sec.querySelector('.cf-skelbar');
@@ -1688,15 +1859,18 @@ function bindSkeletons(sec, c) {
     bar.hidden = false;
     btn.classList.add('on');
     const base = c.layouts.filter(l => !l.variantOf);
-    bar.innerHTML = `<div class="cf-varrow"><span class="ed-lab">Ausgehend von</span>${seg('sbase', base[0]?.id, base.map((l, i) => [l.id, `${pad2(i + 1)} ${esc(l.name)}`]))}<span class="ed-lab">Höchstens</span>${seg('sn', 12, [[8, '8'], [12, '12'], [24, '24']])}</div>
-      <p class="cf-varhint">Erst der Flächenplan, dann der Code: Die Fabrik ordnet die Flächen des Layouts auf einem ${SKEL_COLS}-Spalten-Raster neu an, verwirft Pläne, die gegen Raster, Inset, Blickfang oder Fluchtlinien verstoßen oder dem Ausgang zu ähnlich sind. Wähle aus, was Claude bauen soll.</p>
+    let seed = null;
+    bar.innerHTML = `<div class="cf-varrow"><span class="ed-lab">Ausgehend von</span>${seg('sbase', base[0]?.id, base.map((l, i) => [l.id, `${pad2(i + 1)} ${esc(l.name)}`]))}</div>
+      <div class="cf-varrow"><span class="ed-lab">Höchstens</span>${seg('sn', 12, [[8, '8'], [12, '12'], [24, '24']])}<span class="ed-lab">Zeigen als</span>${seg('smode', 'vorschau', [['vorschau', 'Vorschau'], ['skelett', 'Skelett']])}<button type="button" class="cf-btn" data-a="duel">${icon('shuffle', 14)}Vergleichen</button></div>
+      <p class="cf-varhint">Erst der Flächenplan, dann der Code: Die Fabrik ordnet die Flächen des Layouts auf einem ${SKEL_COLS}-Spalten-Raster neu an, setzt die echten Inhalte sofort hinein und prüft sie. Pläne, die gegen Raster, Inset, Blickfang oder Fluchtlinien verstoßen oder zu ähnlich sind, stehen unten mit Grund. Wähle aus, was Claude bauen soll.</p>
+      <div class="cf-duel" hidden></div>
       <div class="cf-skelhost"></div>
       <div class="cf-varrow"><button type="button" class="cf-btn is-primary" data-a="skel-go" disabled>${F.live ? 'Ausgewählte von Claude bauen lassen' : 'Anweisung für Claude'}</button><span class="cf-varhint" data-a="skel-count">Nichts ausgewählt</span></div>
       <div class="b-log ed-log cf-varlog"></div>`;
     const pick = k => bar.querySelector(`[data-seg="${k}"].on`)?.dataset.v;
+    const lay = () => c.layouts.find(x => x.id === pick('sbase')) || base[0];
     const paint = () => {
-      const l = c.layouts.find(x => x.id === pick('sbase')) || base[0];
-      bar.querySelector('.cf-skelhost').innerHTML = skelWallHTML(c, l, +pick('sn') || 12);
+      bar.querySelector('.cf-skelhost').innerHTML = skelWallHTML(c, lay(), +pick('sn') || 12, .5, { seed, mode: pick('smode') });
       count();
     };
     const count = () => {
@@ -1704,8 +1878,20 @@ function bindSkeletons(sec, c) {
       bar.querySelector('[data-a="skel-count"]').textContent = n ? `${n} ausgewählt – jede wird ein neues Layout mit variantOf` : 'Nichts ausgewählt';
       bar.querySelector('[data-a="skel-go"]').disabled = !n;
     };
-    bar.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => { bar.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach(x => x.classList.toggle('on', x === b)); paint(); }));
+    const duel = () => { const d = bar.querySelector('.cf-duel'); d.innerHTML = duelHTML(c, lay()); };
+    bar.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => { bar.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach(x => x.classList.toggle('on', x === b)); if (b.dataset.seg === 'sbase') seed = null; paint(); }));
     bar.addEventListener('change', e => { if (e.target.matches('[data-skel]')) count(); });
+    bar.addEventListener('click', async e => {
+      const s = e.target.closest('[data-seed]'), back = e.target.closest('[data-a="skel-back"]'), win = e.target.closest('[data-win]'), dbtn = e.target.closest('[data-a="duel"]');
+      if (s) { seed = F.skeletons.items[+s.dataset.seed]; paint(); bar.scrollIntoView({ block: 'start' }); }
+      else if (back) { seed = null; paint(); }
+      else if (dbtn) { const d = bar.querySelector('.cf-duel'); d.hidden = !d.hidden; dbtn.classList.toggle('on', !d.hidden); if (!d.hidden) duel(); }
+      else if (win && F.duel) {
+        const why = bar.querySelector('[data-a="duel-why"]')?.value.trim() || '';
+        await saveDuel({ c: c.id, l: lay().id, a: planInfo(F.duel.a), b: planInfo(F.duel.b), winner: win.dataset.win, comment: why });
+        duel(); paint();
+      }
+    });
     bar.querySelector('[data-a="skel-go"]').addEventListener('click', () => {
       const wall = F.skeletons, l = c.layouts.find(x => x.id === wall.l);
       const chosen = [...bar.querySelectorAll('[data-skel]:checked')].map(x => wall.items[+x.dataset.skel]);
@@ -1862,7 +2048,7 @@ function colorTokens() {
   return [...names].map(n => ({ name: n, value: cs.getPropertyValue(n).trim() }));
 }
 
-const FIG_BY_CHECK = [['grid', 'grid'], ['spacing', 'grid'], ['inset', 'inset'], ['family', 'fonts'], ['radius', 'radii'], ['areas', 'areas'], ['overflow', 'structure'], ['color', 'colors'], ['target', 'targets'], ['consistency', 'cons'], ['dark', 'dark'], ['lock', 'lock'], ['focus', 'skel'], ['edges', 'skel'], ['proximity', 'structure']];
+const FIG_BY_CHECK = [['grid', 'grid'], ['spacing', 'grid'], ['inset', 'inset'], ['family', 'fonts'], ['radius', 'radii'], ['areas', 'areas'], ['overflow', 'structure'], ['color', 'colors'], ['target', 'targets'], ['consistency', 'cons'], ['dark', 'dark'], ['lock', 'lock'], ['focus', 'skel'], ['edges', 'skel'], ['proximity', 'structure'], ['a11yname', 'targets']];
 const figKey = rule => rule.fig || (FIG_BY_CHECK.find(([k]) => (rule.checks || []).includes(k)) || [])[1] || ({ R1: 'grid', R2: 'inset', R3: 'fonts', R4: 'radii', R5: 'areas', R6: 'structure', R7: 'colors', R8: 'three', R10: 'targets', R11: 'cons' })[rule.id];
 function ruleFigure(rule, ex) {
   const { c, l, bp } = ex.main;
